@@ -283,6 +283,12 @@ function Apply-Theme([string]$name) {
         $stripe.Background = $gb
     }
 
+    # Update spark Polyline stroke colors to match theme
+    $fivehSpark = $script:window.FindName('fivehSpark')
+    if ($fivehSpark) { $fivehSpark.Stroke = NewBrush $t.FivehFg }
+    $weekSpark = $script:window.FindName('weekSpark')
+    if ($weekSpark) { $weekSpark.Stroke = NewBrush $t.WeekFg }
+
     # Sync checkmarks on theme menu items (WinForms: .Checked not .IsChecked)
     if ($script:themeItems) {
         foreach ($kv in $script:themeItems.GetEnumerator()) {
@@ -343,7 +349,7 @@ function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey) 
     foreach ($s in $valid) {
         $tSec = ([System.DateTimeOffset]::Parse($s.t) - $t0).TotalSeconds
         $x = [double]($tSec / $tRange) * $w
-        $y = $h - ([double]($s.$metricKey) / 100.0 * $h)  # invert: 100% util = top of canvas
+        $y = $h - ([math]::Max(0, [math]::Min(100, [double]($s.$metricKey))) / 100.0 * $h)  # invert; clamp 0-100
         [void]$spark.Points.Add([System.Windows.Point]::new($x, $y))
     }
 }
@@ -381,21 +387,23 @@ function Update-UI {
         return
     }
 
+    $hasAlert = [bool](Get-Command Check-Alert -ErrorAction SilentlyContinue)
+
     Set-Bar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization        $d.five_hour.resets_at
     Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour'
-    if (Get-Command Check-Alert -ErrorAction SilentlyContinue) { Check-Alert 'five_hour' $d.five_hour.utilization }
+    if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
     Set-Bar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $d.seven_day.utilization         $d.seven_day.resets_at
     Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day'
-    if (Get-Command Check-Alert -ErrorAction SilentlyContinue) { Check-Alert 'seven_day' $d.seven_day.utilization }
+    if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
     Set-Bar 'sonBar'   'sonPct'   'sonSub'   'sonReset'   $d.seven_day_sonnet.utilization  $d.seven_day_sonnet.resets_at
-    if (Get-Command Check-Alert -ErrorAction SilentlyContinue) { Check-Alert 'seven_day_sonnet' $d.seven_day_sonnet.utilization }
+    if ($hasAlert) { Check-Alert 'seven_day_sonnet' $d.seven_day_sonnet.utilization }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible
         Set-Bar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at
-        if (Get-Command Check-Alert -ErrorAction SilentlyContinue) { Check-Alert 'seven_day_opus' $d.seven_day_opus.utilization }
+        if ($hasAlert) { Check-Alert 'seven_day_opus' $d.seven_day_opus.utilization }
     } else {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Collapsed
     }
