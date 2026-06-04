@@ -1,4 +1,6 @@
-# Format.ps1 — pure formatting helpers (no WPF/UI dependencies)
+# Format.ps1 — formatting helpers
+# NOTE: NewBrush and New-GradientBrush require PresentationCore (loaded by overlay.ps1 before dot-sourcing).
+# Format-Reset, Fmt-Tok, Fmt-Money, Remaining-Color are assembly-free and fully Pester-testable.
 
 function NewBrush([string]$hex) {
     New-Object System.Windows.Media.SolidColorBrush (
