@@ -40,7 +40,8 @@ if ($Uninstall) { Uninstall-Autostart; Write-Host 'Removed login auto-start.'; r
 if ($Install) {
     Install-Autostart
     $exe = (Get-Process -Id $PID).Path
-    Start-Process 'conhost.exe' -ArgumentList ('--headless',$exe,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-NonInteractive','-File',$PSCommandPath,'-Background') -WindowStyle Hidden
+    # conhost --headless is required: pwsh -WindowStyle Hidden is ignored by Windows Terminal
+    Start-Process 'conhost.exe' -ArgumentList ('--headless',$exe,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-NonInteractive','-File',$PSCommandPath,'-Background')
     Write-Host 'Installed. Overlay is running.'
     return
 }
@@ -51,7 +52,8 @@ if (-not $Background) {
     Add-Type -Name '_K32' -Namespace '' -MemberDefinition '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();'
     if ([_K32]::GetConsoleWindow() -ne [IntPtr]::Zero) {
         $exe = (Get-Process -Id $PID).Path
-        Start-Process 'conhost.exe' -ArgumentList ('--headless',$exe,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-NonInteractive','-File',$PSCommandPath,'-Background') -WindowStyle Hidden
+        # conhost --headless is required: pwsh -WindowStyle Hidden is ignored by Windows Terminal
+        Start-Process 'conhost.exe' -ArgumentList ('--headless',$exe,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-NonInteractive','-File',$PSCommandPath,'-Background')
         exit
     }
 }

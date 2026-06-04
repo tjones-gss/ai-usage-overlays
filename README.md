@@ -91,7 +91,7 @@ fresh, amber if stale/rate-limited, red if your login expired.
 | `overlay.ps1` | The entire app |
 | `Start-Overlay.vbs` | Silent launcher used by login auto-start |
 | `Install.bat` / `Uninstall.bat` | One-click setup / removal |
-| `overlay-state.json` | Saved window position (created at runtime) |
+| `overlay-state.json` | Saved window position (created at runtime, not tracked in git) |
 
 ## Troubleshooting
 
