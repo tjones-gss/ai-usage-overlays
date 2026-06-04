@@ -8,8 +8,8 @@ function Load-History {
     try {
         if (-not (Test-Path $script:HistoryPath)) { return }
         $raw = Get-Content $script:HistoryPath -Raw | ConvertFrom-Json
-        if ($raw -is [array]) {
-            $script:History = [System.Collections.Generic.List[object]]($raw)
+        if ($null -ne $raw) {
+            $script:History = [System.Collections.Generic.List[object]](@($raw))
         }
     } catch {
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
@@ -82,7 +82,6 @@ function Get-Eta {
     if ($currentUtil -ge 100) { return 0 }  # already at limit
 
     # Minutes to reach 100%
-    $a = ($sumY - $b * $sumX) / $n  # intercept
     $etaMinutes = (100.0 - $currentUtil) / $b
     if ($etaMinutes -gt 1440) { return $null }  # more than 24h away — not useful
     return [int][math]::Ceiling($etaMinutes)
