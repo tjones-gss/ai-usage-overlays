@@ -73,7 +73,6 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\Data.ps1')
 . (Join-Path $script:AppDir 'src\State.ps1')
 . (Join-Path $script:AppDir 'src\Ui.ps1')
-. (Join-Path $script:AppDir 'src\Tray.ps1')
 
 # ---------------------------------------------------------------------------
 # Runtime state (declared after modules so $xaml from Ui.ps1 is available)
@@ -85,6 +84,9 @@ $script:Positioned = $false
 
 $reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
 $script:window = [System.Windows.Markup.XamlReader]::Load($reader)
+
+# Tray MUST be dot-sourced after $script:window is created (wires window events at load time)
+. (Join-Path $script:AppDir 'src\Tray.ps1')
 
 # ---------------------------------------------------------------------------
 # Startup sequence
