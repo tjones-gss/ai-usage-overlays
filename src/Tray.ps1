@@ -216,6 +216,7 @@ $miGraph = New-StripItem 'Show history graph' {
     $script:Cfg.ShowGraph = -not [bool]$script:Cfg.ShowGraph
     $miGraph.Checked = [bool]$script:Cfg.ShowGraph
     Apply-Settings; Save-State
+    Update-UI   # populate sparklines immediately instead of waiting for next tick
 }
 $miGraph.Checked = [bool]$script:Cfg.ShowGraph
 [void]$script:ctxStrip.Items.Add($miGraph)
