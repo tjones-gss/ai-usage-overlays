@@ -63,6 +63,10 @@ try {
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
                        System.Windows.Forms, System.Drawing, System.Xaml
 
+# TODO (refactor): dot-source src\*.ps1 files will replace all inline definitions below.
+# Config.ps1, Format.ps1, Pricing.ps1, History.ps1, Data.ps1, State.ps1, Ui.ps1, Tray.ps1
+# are being built incrementally; overlay.ps1 will be thinned in a later task.
+
 # ---------------------------------------------------------------------------
 # State & config
 # ---------------------------------------------------------------------------
