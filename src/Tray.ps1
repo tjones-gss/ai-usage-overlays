@@ -116,7 +116,7 @@ function Check-Alert([string]$key, $util) {
         $eta = ''
         if ($script:History -and $script:History.Count -gt 2) {
             $mins = Get-Eta $script:History $key
-            if ($mins -ne $null) { $eta = " (~$mins min to limit)" }
+            if ($null -ne $mins) { $eta = " (~$mins min to limit)" }
         }
         $script:notify.ShowBalloonTip(5000, 'Claude Usage Critical', "$label at $([int]$u)%$eta", [System.Windows.Forms.ToolTipIcon]::Warning)
         $script:Notified[$key] = $script:CritPct
