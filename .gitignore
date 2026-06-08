@@ -1,0 +1,4 @@
+# Runtime files — generated at startup, not tracked
+*.pid
+*-state.json
+*-error.log
