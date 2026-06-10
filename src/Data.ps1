@@ -32,35 +32,136 @@ function Get-Usage {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Measure-Stats — pure aggregator, takes pre-parsed records and a reference
+# date; returns the same hashtable shape consumed by Update-UI.
+#
+# Each record must have:
+#   Model     — model name string (e.g. 'claude-opus-4-8')
+#   Date      — [datetime] (local date of the message)
+#   In        — [long] input tokens
+#   Out       — [long] output tokens
+#   CacheW    — [long] cache-creation tokens
+#   CacheR    — [long] cache-read tokens
+#   SessionId — session GUID string
+#   Key       — dedup key (already applied upstream by Get-Stats)
+# ---------------------------------------------------------------------------
+function Measure-Stats([object[]]$records, [datetime]$today) {
+    $val = 0.0; $tin = 0L; $tout = 0L
+    $sessions = [System.Collections.Generic.HashSet[string]]::new()
+    $tMsg = 0; $tTok = 0L
+
+    foreach ($r in $records) {
+        $v = @{
+            inputTokens              = $r.In
+            outputTokens             = $r.Out
+            cacheCreationInputTokens = $r.CacheW
+            cacheReadInputTokens     = $r.CacheR
+        }
+        $val  += Estimate-Cost $r.Model $v
+        $tin  += [long]$r.In
+        $tout += [long]$r.Out
+        [void]$sessions.Add([string]$r.SessionId)
+
+        if ($r.Date.Date -eq $today.Date) {
+            $tMsg++
+            $tTok += [long]$r.In + [long]$r.Out
+        }
+    }
+
+    return @{
+        ValueUSD     = $val
+        InTokens     = $tin
+        OutTokens    = $tout
+        Sessions     = $sessions.Count
+        Messages     = $records.Count
+        TodayMsg     = $tMsg
+        TodayTok     = $tTok
+        LastComputed = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+    }
+}
+
+# Per-file parse cache: path → @{ Stamp; Records }
+# Stamp = "$($file.LastWriteTimeUtc.Ticks):$($file.Length)"
+$script:StatsFileCache = @{}
+
 function Get-Stats {
-    $path = Join-Path $env:USERPROFILE '.claude\stats-cache.json'
-    try { $d = Get-Content $path -Raw | ConvertFrom-Json } catch {
-        Write-Log "Get-Stats: failed to read stats-cache.json — $($_.Exception.Message)"
+    $projDir = Join-Path $env:USERPROFILE '.claude\projects'
+    if (-not (Test-Path $projDir)) {
+        Write-Log 'Get-Stats: ~/.claude/projects not found — no transcript data'
         return
     }
-    $val = 0.0; $tin = 0L; $tout = 0L
-    if ($d.modelUsage) {
-        foreach ($m in $d.modelUsage.PSObject.Properties) {
-            $val  += Estimate-Cost $m.Name $m.Value
-            $tin  += [long]$m.Value.inputTokens
-            $tout += [long]$m.Value.outputTokens
+
+    try {
+        $files = Get-ChildItem $projDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
+    } catch {
+        Write-Log "Get-Stats: failed to enumerate transcripts — $($_.Exception.Message)"
+        return
+    }
+
+    # Deduplicate across all files using msgId:requestId key
+    $seen  = [System.Collections.Generic.HashSet[string]]::new()
+    $allRecords = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($file in $files) {
+        $stamp = "$($file.LastWriteTimeUtc.Ticks):$($file.Length)"
+        $cached = $script:StatsFileCache[$file.FullName]
+
+        if ($cached -and $cached.Stamp -eq $stamp) {
+            # Reuse cached parse — only add records whose keys haven't been seen yet
+            foreach ($r in $cached.Records) {
+                if ($seen.Add($r.Key)) { $allRecords.Add($r) }
+            }
+            continue
+        }
+
+        # Parse this file fresh
+        $fileRecords = [System.Collections.Generic.List[object]]::new()
+        try {
+            $lines = Get-Content $file.FullName -Encoding UTF8 -ErrorAction Stop
+        } catch {
+            Write-Log "Get-Stats: skipping unreadable file $($file.FullName) — $($_.Exception.Message)"
+            continue
+        }
+
+        foreach ($line in $lines) {
+            if (-not $line) { continue }
+            try {
+                $o = $line | ConvertFrom-Json -ErrorAction Stop
+            } catch { continue }
+
+            # Only assistant messages with usage data
+            if ($o.type -ne 'assistant') { continue }
+            $u = $o.message.usage
+            if (-not $u) { continue }
+
+            $key = "$($o.message.id):$($o.requestId)"
+            $ts  = $o.timestamp
+            if (-not $ts) { continue }
+
+            $r = @{
+                Model     = [string]$o.message.model
+                Date      = ([datetime]$ts).ToLocalTime()
+                In        = [long]$u.input_tokens
+                Out       = [long]$u.output_tokens
+                CacheW    = [long]$u.cache_creation_input_tokens
+                CacheR    = [long]$u.cache_read_input_tokens
+                SessionId = [string]$o.sessionId
+                Key       = $key
+            }
+            $fileRecords.Add($r)
+        }
+
+        $script:StatsFileCache[$file.FullName] = @{ Stamp = $stamp; Records = $fileRecords }
+
+        foreach ($r in $fileRecords) {
+            if ($seen.Add($r.Key)) { $allRecords.Add($r) }
         }
     }
-    $today = (Get-Date -Format 'yyyy-MM-dd')
-    $tMsg = 0; $tTok = 0L
-    if ($d.dailyActivity) {
-        $da = $d.dailyActivity | Where-Object { (Get-Date $_.date -Format 'yyyy-MM-dd') -eq $today }
-        if ($da) { $tMsg = [int]$da.messageCount }
-    }
-    if ($d.dailyModelTokens) {
-        $dt = $d.dailyModelTokens | Where-Object { (Get-Date $_.date -Format 'yyyy-MM-dd') -eq $today }
-        if ($dt -and $dt.tokensByModel) {
-            foreach ($p in $dt.tokensByModel.PSObject.Properties) { $tTok += [long]$p.Value }
-        }
-    }
-    $script:Stats = @{
-        ValueUSD = $val; InTokens = $tin; OutTokens = $tout
-        Sessions = [int]$d.totalSessions; Messages = [int]$d.totalMessages
-        TodayMsg = $tMsg; TodayTok = $tTok; LastComputed = $d.lastComputedDate
+
+    try {
+        $script:Stats = Measure-Stats $allRecords.ToArray() (Get-Date)
+    } catch {
+        Write-Log "Get-Stats: Measure-Stats failed — $($_.Exception.Message)"
     }
 }

@@ -242,8 +242,8 @@ $xaml = @'
 </Window>
 '@
 
-$reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-$script:window = [System.Windows.Markup.XamlReader]::Load($reader)
+# $xaml is consumed by overlay.ps1 after dot-sourcing this module.
+# The window is created there (one instance only).
 
 # ---------------------------------------------------------------------------
 # Theme application
