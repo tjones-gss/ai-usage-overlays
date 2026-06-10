@@ -36,23 +36,23 @@ Add-Type -ReferencedAssemblies $_sdPath, $_swfPath -TypeDefinition @'
 using System.Drawing;
 using System.Windows.Forms;
 public class DarkColorTable : ProfessionalColorTable {
-    public override Color MenuItemSelected              => Color.FromArgb(30,  58, 95);
-    public override Color MenuItemBorder                => Color.FromArgb(56, 130, 180);
-    public override Color MenuBorder                    => Color.FromArgb(30,  58, 95);
-    public override Color ToolStripDropDownBackground   => Color.FromArgb(13,  20, 40);
-    public override Color ImageMarginGradientBegin      => Color.FromArgb(13,  20, 40);
-    public override Color ImageMarginGradientMiddle     => Color.FromArgb(13,  20, 40);
-    public override Color ImageMarginGradientEnd        => Color.FromArgb(13,  20, 40);
-    public override Color CheckBackground               => Color.FromArgb(30,  58, 95);
-    public override Color CheckSelectedBackground       => Color.FromArgb(56, 130, 180);
-    public override Color SeparatorDark                 => Color.FromArgb(30,  58, 95);
-    public override Color SeparatorLight                => Color.FromArgb(13,  20, 40);
-    public override Color MenuItemSelectedGradientBegin => Color.FromArgb(30,  58, 95);
-    public override Color MenuItemSelectedGradientEnd   => Color.FromArgb(30,  58, 95);
-    public override Color MenuItemPressedGradientBegin  => Color.FromArgb(56, 130, 180);
-    public override Color MenuItemPressedGradientEnd    => Color.FromArgb(56, 130, 180);
-    public override Color MenuStripGradientBegin        => Color.FromArgb(13,  20, 40);
-    public override Color MenuStripGradientEnd          => Color.FromArgb(13,  20, 40);
+    public override Color MenuItemSelected              { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color MenuItemBorder                { get { return Color.FromArgb(56, 130, 180); } }
+    public override Color MenuBorder                    { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color ToolStripDropDownBackground   { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color ImageMarginGradientBegin      { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color ImageMarginGradientMiddle     { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color ImageMarginGradientEnd        { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color CheckBackground               { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color CheckSelectedBackground       { get { return Color.FromArgb(56, 130, 180); } }
+    public override Color SeparatorDark                 { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color SeparatorLight                { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color MenuItemSelectedGradientBegin { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color MenuItemSelectedGradientEnd   { get { return Color.FromArgb(30,  58, 95);  } }
+    public override Color MenuItemPressedGradientBegin  { get { return Color.FromArgb(56, 130, 180); } }
+    public override Color MenuItemPressedGradientEnd    { get { return Color.FromArgb(56, 130, 180); } }
+    public override Color MenuStripGradientBegin        { get { return Color.FromArgb(13,  20, 40);  } }
+    public override Color MenuStripGradientEnd          { get { return Color.FromArgb(13,  20, 40);  } }
 }
 public class DarkMenuRenderer : ToolStripProfessionalRenderer {
     public DarkMenuRenderer() : base(new DarkColorTable()) { RoundedEdges = false; }

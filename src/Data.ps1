@@ -138,10 +138,13 @@ function Get-Stats {
             $key = "$($o.message.id):$($o.requestId)"
             $ts  = $o.timestamp
             if (-not $ts) { continue }
+            # PS7 ConvertFrom-Json auto-converts ISO timestamps to [datetime]; PS5 leaves them as strings.
+            # [System.DateTimeOffset]::Parse handles the string case; the else handles PS7's [datetime].
+            $localDate = if ($ts -is [string]) { [System.DateTimeOffset]::Parse($ts).LocalDateTime } else { ([datetime]$ts).ToLocalTime() }
 
             $r = @{
                 Model     = [string]$o.message.model
-                Date      = ([datetime]$ts).ToLocalTime()
+                Date      = $localDate
                 In        = [long]$u.input_tokens
                 Out       = [long]$u.output_tokens
                 CacheW    = [long]$u.cache_creation_input_tokens
