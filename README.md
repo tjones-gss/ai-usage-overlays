@@ -6,23 +6,30 @@ Always-on-top Windows HUDs that show live usage stats for Claude Code and Cursor
 
 ## Overlays
 
-| Overlay | Shows |
-|---|---|
-| **[ClaudeUsageOverlay](ClaudeUsageOverlay/)** | 5-hour session %, weekly limit %, Sonnet %, overage spend, lifetime tokens |
-| **[CursorUsageOverlay](CursorUsageOverlay/)** | Included requests (with OVER detection), on-demand spend, agent edits, top model |
+Each overlay lives on its own branch — clone only what you need.
+
+| Overlay | Branch | Shows |
+|---|---|---|
+| **Claude Code** | [`claude`](../../tree/claude) | 5-hour session %, weekly limit %, Sonnet %, overage spend, lifetime tokens |
+| **Cursor IDE** | [`cursor`](../../tree/cursor) | Included requests (with OVER detection), on-demand spend, agent edits, top model |
 
 ## Requirements
 
 - Windows 10/11
 - PowerShell 7+ (`winget install Microsoft.PowerShell`)
-- Python 3 (for reading SQLite databases — usually already installed)
+- Python 3 (for Cursor overlay — reads SQLite databases; usually already installed)
 
 ## Quick Install
 
-Run `Install.bat` inside each overlay folder. It registers a login startup shortcut and launches immediately.
+Clone the branch for the overlay you want, then run `Install.bat`.
 
 ```
+# Claude overlay
+git clone -b claude https://github.com/tjones-gss/ai-usage-overlays.git ClaudeUsageOverlay
 ClaudeUsageOverlay\Install.bat
+
+# Cursor overlay
+git clone -b cursor https://github.com/tjones-gss/ai-usage-overlays.git CursorUsageOverlay
 CursorUsageOverlay\Install.bat
 ```
 
@@ -47,8 +54,4 @@ No external dependencies, no installers, no elevated permissions required.
 
 ## Uninstall
 
-```
-ClaudeUsageOverlay\Uninstall.bat
-```
-
-Or right-click the tray icon → Quit, then delete the folder.
+Run `Uninstall.bat` in the cloned folder, or right-click the tray icon → Quit, then delete the folder.
