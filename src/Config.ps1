@@ -14,6 +14,7 @@ $script:CritPct        = 95
 # ---------------------------------------------------------------------------
 $script:PricesAsOf = '2026-06-01'
 $script:Prices = @{
+    fable  = @{ in = 10.0; out = 50.0; cw = 12.50; cr = 1.00 }
     opus   = @{ in = 15.0; out = 75.0; cw = 18.75; cr = 1.50 }
     sonnet = @{ in = 3.0;  out = 15.0; cw = 3.75;  cr = 0.30 }
     haiku  = @{ in = 1.0;  out = 5.0;  cw = 1.25;  cr = 0.10 }

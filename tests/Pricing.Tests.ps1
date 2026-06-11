@@ -33,4 +33,12 @@ Describe 'Estimate-Cost' {
         $v = @{inputTokens=0; outputTokens=1000000; cacheCreationInputTokens=0; cacheReadInputTokens=0}
         Estimate-Cost 'claude-opus-4' $v | Should -Be 75.0
     }
+    It 'calculates fable pricing for 1M input tokens' {
+        $v = @{inputTokens=1000000; outputTokens=0; cacheCreationInputTokens=0; cacheReadInputTokens=0}
+        Estimate-Cost 'claude-fable-5' $v | Should -Be 10.0
+    }
+    It 'returns zero cost for synthetic model' {
+        $v = @{inputTokens=1000000; outputTokens=1000000; cacheCreationInputTokens=1000000; cacheReadInputTokens=1000000}
+        Estimate-Cost '<synthetic>' $v | Should -Be 0.0
+    }
 }
