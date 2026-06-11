@@ -1,54 +1,45 @@
-# AI Usage Overlays
+# Cursor Usage Overlay
 
-Always-on-top Windows HUDs that show live usage stats for Claude Code and Cursor IDE. Both overlays sit in the system tray and display a compact panel you can drag anywhere on screen.
+Always-on-top Windows HUD for Cursor IDE usage. Shows live request counts and on-demand spend from your Cursor account.
 
-![Both overlays side by side](docs/preview.png)
+## What It Shows
 
-## Overlays
-
-| Overlay | Shows |
-|---|---|
-| **[ClaudeUsageOverlay](ClaudeUsageOverlay/)** | 5-hour session %, weekly limit %, Sonnet %, overage spend, lifetime tokens |
-| **[CursorUsageOverlay](CursorUsageOverlay/)** | Included requests (with OVER detection), on-demand spend, agent edits, top model |
+- **Included requests** — used / limit with OVER alert when exceeded, reset countdown
+- **On-demand spend** — dollars charged beyond included requests this billing cycle
+- **Agent edits** — all-time and today's edits from local tracking database
+- **Top model** — most-used model with usage percentage
+- **Sessions** — total conversation count
 
 ## Requirements
 
 - Windows 10/11
-- PowerShell 7+ (`winget install Microsoft.PowerShell`)
-- Python 3 (for reading SQLite databases — usually already installed)
+- PowerShell 7+
+- Python 3 (reads Cursor's SQLite databases)
+- Cursor IDE installed and signed in
 
-## Quick Install
+## Install
 
-Run `Install.bat` inside each overlay folder. It registers a login startup shortcut and launches immediately.
-
-```
-ClaudeUsageOverlay\Install.bat
-CursorUsageOverlay\Install.bat
+```bat
+Install.bat
 ```
 
-## Features
+Registers a login startup shortcut and starts the overlay immediately.
 
-- **Always on top** — stays visible over all other windows
-- **System tray icon** — left-click to show/hide, right-click for menu
-- **4 color themes** — Cursor Green, Deep Space, Neon, Mono (right-click → Theme)
-- **Drag to reposition** — position is saved between restarts
-- **Opacity control** — right-click → Opacity
-- **Snap to corners** — right-click → Snap to corner
-- **Single-instance guard** — PID file prevents duplicate tray icons
+## Auth
 
-## How It Works
-
-Both overlays are standalone PowerShell scripts that:
-1. Read auth tokens from local app storage (no credentials stored separately)
-2. Call the respective usage APIs with your existing session cookie
-3. Display data in a WPF window with WinForms tray icon
-
-No external dependencies, no installers, no elevated permissions required.
-
-## Uninstall
-
+Reads your session token from Cursor's local SQLite database at:
 ```
-ClaudeUsageOverlay\Uninstall.bat
+%APPDATA%\Cursor\User\globalStorage\state.vscdb
 ```
+No separate login required — uses your existing Cursor session.
 
-Or right-click the tray icon → Quit, then delete the folder.
+## APIs Used
+
+| Endpoint | Data |
+|---|---|
+| `cursor.com/api/usage` | Included request count and limit |
+| `cursor.com/api/usage-summary` | On-demand spend in cents |
+
+Both are called with your existing Cursor session cookie. Refreshes every 5 minutes.
+
+Local agent edit stats are read from `~\.cursor\ai-tracking\ai-code-tracking.db`.
