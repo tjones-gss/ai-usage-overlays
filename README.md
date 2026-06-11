@@ -1,23 +1,15 @@
-# Claude Usage Overlay
+# AI Usage Overlay — Combined (Claude + Cursor)
 
-Always-on-top Windows HUD for Claude Code usage. Shows live limits from `claude.ai/settings/limits`.
+Runs both the Claude Code and Cursor usage overlays in a single process. Each overlay gets its own always-on-top panel and system-tray icon. For people who use both subscriptions.
 
-## What It Shows
-
-- **5-hour session** — % used with time-to-reset countdown
-- **Weekly limit** — % used with days-to-reset
-- **Sonnet weekly** — separate Sonnet model limit
-- **Opus weekly** — shown only when you have Opus usage
-- **Est. cost** — API-equivalent value of all usage (informational; not charged on flat-rate plans)
-- **Overage** — real spend beyond your plan limit, if usage-based billing is enabled
-- **Tokens** — all-time input / output token counts
-- **Lifetime** — total sessions and messages
+For standalone installs see the [`claude`](../../tree/claude) or [`cursor`](../../tree/cursor) branch.
 
 ## Requirements
 
 - Windows 10/11
-- PowerShell 7+
+- PowerShell 7+ (`winget install Microsoft.PowerShell`) or Windows PowerShell 5.1
 - Claude Code CLI logged in (`claude auth login`)
+- Python 3 (for Cursor local stats — usually already installed)
 
 ## Install
 
@@ -25,19 +17,27 @@ Always-on-top Windows HUD for Claude Code usage. Shows live limits from `claude.
 Install.bat
 ```
 
-Registers a login startup shortcut and starts the overlay immediately.
+Registers a single login startup entry and launches both overlays immediately.
 
-## Auth
+## Usage
 
-Reads your access token from `~\.claude\.credentials.json` (written by `claude auth login`). No separate login required.
+| Action | How |
+|---|---|
+| **Show / hide Claude panel** | Left-click the **C** tray icon |
+| **Show / hide Cursor panel** | Left-click the **Cu** tray icon |
+| **Options for each overlay** | Right-click its tray icon or panel |
+| **Quit both** | Right-click either tray icon → Quit (exits that overlay only) |
 
-## API
-
-Calls `https://api.anthropic.com/api/oauth/usage` with your OAuth token. Refreshes every 3 minutes.
-Local stats (tokens, sessions, messages) are read from `~\.claude\stats-cache.json` which Claude Code updates periodically.
+Each overlay saves its own position, opacity, and theme independently.
 
 ## Uninstall
 
 ```bat
 Uninstall.bat
 ```
+
+Then right-click each tray icon and choose **Quit**.
+
+## How it works
+
+`combined-overlay.ps1` starts `overlay.ps1` and `cursor-overlay.ps1` each in a dedicated STA thread (runspace) so they run with full isolation — separate WPF dispatchers, separate tray icons, no shared state.
