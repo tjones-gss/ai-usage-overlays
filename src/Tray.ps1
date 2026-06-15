@@ -1,11 +1,17 @@
 # Tray.ps1 — system tray icon, dark context menu, threshold alert balloons
 
 # ---------------------------------------------------------------------------
-# Window events
+# Window events — wired per window instance (called by Build-And-Show on each build)
 # ---------------------------------------------------------------------------
-$script:window.Add_MouseLeftButtonDown({ try { $script:window.DragMove() } catch { Write-Log "DragMove error: $($_.Exception.Message)" }; Save-State })
-$script:window.Add_Loaded({ Position-Window })
-$script:window.Add_Closing({ param($s, $e) if (-not $script:ReallyQuit) { $e.Cancel = $true; $script:window.Hide() } })
+function Wire-WindowEvents {
+    $script:window.Add_MouseLeftButtonDown({ try { $script:window.DragMove() } catch { Write-Log "DragMove error: $($_.Exception.Message)" }; Save-State })
+    $script:window.Add_Loaded({ Position-Window })
+    $script:window.Add_Closing({ param($s, $e) if (-not $script:ReallyQuit) { $e.Cancel = $true; $script:window.Hide() } })
+    $script:window.Add_MouseRightButtonUp({
+        $pt = [System.Windows.Forms.Control]::MousePosition
+        $script:ctxStrip.Show($pt.X, $pt.Y)
+    })
+}
 
 function Toggle-Window {
     if ($script:window.IsVisible) { $script:window.Hide() }
@@ -226,12 +232,6 @@ Add-Separator
 # ── Window ────────────────────────────────────────────────────────────────
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Minimize to tray' { $script:window.Hide() }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Quit'             { Quit-App }))
-
-# Show at cursor on right-click anywhere on the WPF panel
-$script:window.Add_MouseRightButtonUp({
-    $pt = [System.Windows.Forms.Control]::MousePosition
-    $script:ctxStrip.Show($pt.X, $pt.Y)
-})
 
 # ---------------------------------------------------------------------------
 # Tray icon — left-click only (full menu is on the panel)
