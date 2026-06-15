@@ -85,10 +85,9 @@ $script:Stats      = $null
 $script:ReallyQuit = $false
 $script:Positioned = $false
 
-$reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-$script:window = [System.Windows.Markup.XamlReader]::Load($reader)
+$script:window = [System.Windows.Markup.XamlReader]::Parse($xaml)
 
-# Tray MUST be dot-sourced after $script:window is created (wires window events at load time)
+# Tray MUST be dot-sourced after $script:window is created (builds tray/menu, defines Wire-WindowEvents)
 . (Join-Path $script:AppDir 'src\Tray.ps1')
 
 # ---------------------------------------------------------------------------
@@ -109,14 +108,45 @@ $script:tickTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:tickTimer.Interval = [TimeSpan]::FromSeconds($script:TickSeconds)
 $script:tickTimer.add_Tick({ Update-UI })
 
+# Build-And-Show: retry window Show() until the DWM compositor is ready.
+# At login the Startup-folder shortcut can fire before the desktop is fully
+# initialised, causing WPF's SetRootVisual to fail with "VisualTarget cannot
+# have a parent".  The error is transient; recreating the window and retrying
+# is the correct fix.  Backoff: 250 ms, 500 ms, 1 s, 2 s, 4 s x3 (~16 s total).
+function Build-And-Show {
+    $maxAttempts = 8
+    for ($i = 1; $i -le $maxAttempts; $i++) {
+        if ($i -gt 1) {
+            # Discard the bad window state and create a fresh one.
+            $script:Positioned = $false
+            $script:window = [System.Windows.Markup.XamlReader]::Parse($xaml)
+            Update-UI
+            Apply-Settings
+        }
+        Wire-WindowEvents
+        try {
+            if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { $script:window.Show() }
+            return $true
+        } catch {
+            if ($_.Exception.Message -notmatch 'VisualTarget') { throw }
+            $delay = [math]::Min(4000, [int](250 * [math]::Pow(2, $i - 1)))
+            Write-Log "Show() attempt $i/$maxAttempts failed (compositor not ready); retrying in ${delay}ms..."
+            Start-Sleep -Milliseconds $delay
+        }
+    }
+    return $false
+}
+
+if (-not (Build-And-Show)) {
+    Write-Log 'Overlay failed to start after all attempts — compositor never became ready.'
+    return
+}
+
 $script:pollTimer.Start()
 $script:tickTimer.Start()
 
 # Write PID file so Uninstall.bat can terminate the process
 try { [System.IO.File]::WriteAllText($script:PidPath, "$PID") } catch { }
-
-# Always show unless the user has explicitly chosen "Start hidden"
-if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { $script:window.Show() }
 
 [System.Windows.Threading.Dispatcher]::Run()
 
