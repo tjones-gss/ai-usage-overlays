@@ -257,7 +257,7 @@ function Get-CursorUsage {
     } catch {
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
-        if ($code -eq 401) { $script:AuthState = 'auth';  $script:ErrMsg = 'Auth expired – reopen Cursor' }
+        if ($code -eq 401) { $script:AuthState = 'auth';  $script:ErrMsg = 'Auth expired - reopen Cursor' }
         else                { $script:AuthState = 'stale'; $script:ErrMsg = $_.Exception.Message }
     }
 
@@ -755,7 +755,7 @@ function Position-Window {
 
 function Copy-Stats {
     $d = $script:LiveData; $l = $script:LocalData
-    $lines = @("Cursor Usage — $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+    $lines = @("Cursor Usage - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
     if ($d -and $d.'gpt-4') {
         $lines += "Requests: $($d.'gpt-4'.numRequests) / $($d.'gpt-4'.maxRequestUsage)"
         $lines += "Reset: $(Format-Reset $d.startOfMonth)"
@@ -805,23 +805,23 @@ Add-Type -ReferencedAssemblies $_sdPath, $_swfPath -TypeDefinition @'
 using System.Drawing;
 using System.Windows.Forms;
 public class CursorDarkColorTable : ProfessionalColorTable {
-    public override Color MenuItemSelected              => Color.FromArgb(13, 61, 47);
-    public override Color MenuItemBorder                => Color.FromArgb(52, 211, 153);
-    public override Color MenuBorder                    => Color.FromArgb(13, 61, 47);
-    public override Color ToolStripDropDownBackground   => Color.FromArgb(10, 22, 40);
-    public override Color ImageMarginGradientBegin      => Color.FromArgb(10, 22, 40);
-    public override Color ImageMarginGradientMiddle     => Color.FromArgb(10, 22, 40);
-    public override Color ImageMarginGradientEnd        => Color.FromArgb(10, 22, 40);
-    public override Color CheckBackground               => Color.FromArgb(13, 61, 47);
-    public override Color CheckSelectedBackground       => Color.FromArgb(52, 211, 153);
-    public override Color SeparatorDark                 => Color.FromArgb(13, 61, 47);
-    public override Color SeparatorLight                => Color.FromArgb(10, 22, 40);
-    public override Color MenuItemSelectedGradientBegin => Color.FromArgb(13, 61, 47);
-    public override Color MenuItemSelectedGradientEnd   => Color.FromArgb(13, 61, 47);
-    public override Color MenuItemPressedGradientBegin  => Color.FromArgb(52, 211, 153);
-    public override Color MenuItemPressedGradientEnd    => Color.FromArgb(52, 211, 153);
-    public override Color MenuStripGradientBegin        => Color.FromArgb(10, 22, 40);
-    public override Color MenuStripGradientEnd          => Color.FromArgb(10, 22, 40);
+    public override Color MenuItemSelected              { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color MenuItemBorder                { get { return Color.FromArgb(52, 211, 153); } }
+    public override Color MenuBorder                    { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color ToolStripDropDownBackground   { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color ImageMarginGradientBegin      { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color ImageMarginGradientMiddle     { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color ImageMarginGradientEnd        { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color CheckBackground               { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color CheckSelectedBackground       { get { return Color.FromArgb(52, 211, 153); } }
+    public override Color SeparatorDark                 { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color SeparatorLight                { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color MenuItemSelectedGradientBegin { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color MenuItemSelectedGradientEnd   { get { return Color.FromArgb(13, 61, 47); } }
+    public override Color MenuItemPressedGradientBegin  { get { return Color.FromArgb(52, 211, 153); } }
+    public override Color MenuItemPressedGradientEnd    { get { return Color.FromArgb(52, 211, 153); } }
+    public override Color MenuStripGradientBegin        { get { return Color.FromArgb(10, 22, 40); } }
+    public override Color MenuStripGradientEnd          { get { return Color.FromArgb(10, 22, 40); } }
 }
 public class CursorMenuRenderer : ToolStripProfessionalRenderer {
     public CursorMenuRenderer() : base(new CursorDarkColorTable()) { RoundedEdges = false; }
@@ -988,7 +988,7 @@ $script:opacityTimer.Start()
 
 Log "About to show window (Hidden=$Hidden StartHidden=$($script:Cfg.StartHidden))"
 if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { $script:window.Show() }
-Log "Window shown — starting dispatcher"
+Log "Window shown - starting dispatcher"
 [System.Windows.Threading.Dispatcher]::Run()
 Log "Dispatcher exited"
 
