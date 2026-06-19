@@ -100,29 +100,29 @@ $script:Themes = [ordered]@{
     'Cursor Green' = @{
         BgC1 = '#0A1628'; BgC2 = '#060E1C'; BorderC1 = '#0F3D2F'
         BarC1 = '#065F46'; BarC2 = '#34D399'
-        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#4A8870'
-        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3A6E52'
+        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#7EC4A6'
+        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; GssLabelFg = '#5CA882'
         Stripe = '#065F46','#34D399','#6EE7B7','#A7F3D0'
     }
     'Global Shop' = @{
         BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'
         BarC1 = '#1A5C2A'; BarC2 = '#2D9F48'
-        LabelFg = '#2D9F48'; ValueFg = '#4AE068'; DimFg = '#2D5038'
+        LabelFg = '#2D9F48'; ValueFg = '#4AE068'; DimFg = '#5AAD78'
         BarTrack = '#0D1F0F'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3DC95A'
         Stripe = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
     }
     'Deep Space' = @{
         BgC1 = '#0F111A'; BgC2 = '#080A12'; BorderC1 = '#252B44'
         BarC1 = '#2D3A8A'; BarC2 = '#818CF8'
-        LabelFg = '#818CF8'; ValueFg = '#A5B4FC'; DimFg = '#3D4B6B'
-        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; GssLabelFg = '#3D4B6B'
+        LabelFg = '#818CF8'; ValueFg = '#A5B4FC'; DimFg = '#6B82A8'
+        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; GssLabelFg = '#6B82A8'
         Stripe = '#38BDF8','#818CF8','#C084FC','#FB923C'
     }
     'Mono' = @{
         BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'
         BarC1 = '#262626'; BarC2 = '#D4D4D4'
-        LabelFg = '#D4D4D4'; ValueFg = '#FAFAFA'; DimFg = '#525252'
-        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; GssLabelFg = '#525252'
+        LabelFg = '#D4D4D4'; ValueFg = '#FAFAFA'; DimFg = '#909090'
+        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; GssLabelFg = '#909090'
         Stripe = '#404040','#737373','#A3A3A3','#E5E5E5'
     }
 }
@@ -355,8 +355,8 @@ $xaml = @'
     </Border.BorderBrush>
     <DockPanel>
 
-      <!-- Theme accent stripe -->
-      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="4">
+      <!-- Theme accent stripe — CornerRadius matches outer border (16-1=15) so it curves with the window -->
+      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="5" CornerRadius="15,15,0,0">
         <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#065F46" Offset="0"/>
@@ -376,20 +376,20 @@ $xaml = @'
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Ellipse x:Name="statusDot" Width="7" Height="7" Fill="#34D399"
+            <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="#34D399"
                      VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBlock x:Name="headerLabel" Foreground="#6BBFA0" FontSize="11"
+            <TextBlock x:Name="headerLabel" Foreground="#6BBFA0" FontSize="12"
                        FontFamily="Bahnschrift SemiBold" Text="CURSOR "/>
-            <TextBlock Foreground="#D1FAE5" FontSize="11" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
+            <TextBlock Foreground="#D1FAE5" FontSize="12" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
           </StackPanel>
           <TextBlock x:Name="timeText" Grid.Column="1" Text=""
-                     Foreground="#5A9A80" FontSize="10" FontFamily="Consolas" VerticalAlignment="Center"/>
+                     Foreground="#5A9A80" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
         <!-- ON-DEMAND HERO -->
         <StackPanel Margin="0,0,0,10">
           <TextBlock x:Name="onDemandLabel" Text="ON-DEMAND THIS CYCLE"
-                     Foreground="#5B9A80" FontSize="9" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold"
                      Margin="0,0,0,2"/>
           <TextBlock x:Name="onDemandText" Text="--"
                      Foreground="#FBBF24" FontSize="30" FontFamily="Bahnschrift Bold"/>
@@ -417,17 +417,17 @@ $xaml = @'
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
-                       Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                       Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold"
                        VerticalAlignment="Center" Margin="0,0,6,0"/>
             <Border x:Name="overPill" Grid.Column="1" Background="#1F1800"
                     BorderBrush="#FBBF24" BorderThickness="1" CornerRadius="3"
                     Padding="3,1,3,1" VerticalAlignment="Center" HorizontalAlignment="Left"
                     Visibility="Collapsed">
-              <TextBlock Text="over" Foreground="#FBBF24" FontSize="8"
+              <TextBlock Text="over" Foreground="#FBBF24" FontSize="9"
                          FontFamily="Bahnschrift SemiBold"/>
             </Border>
             <TextBlock x:Name="reqReset" Grid.Column="2" Text=""
-                       Foreground="#5B9A80" FontSize="9" FontFamily="Consolas"
+                       Foreground="#7EC4A6" FontSize="10" FontFamily="Consolas"
                        VerticalAlignment="Center"/>
           </Grid>
           <!-- Count row -->
@@ -437,10 +437,10 @@ $xaml = @'
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
-                       Foreground="#5B9A80" FontSize="10" FontFamily="Segoe UI"
+                       Foreground="#7EC4A6" FontSize="11" FontFamily="Segoe UI"
                        VerticalAlignment="Center"/>
             <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
-                       Foreground="#6EE7B7" FontSize="11" FontFamily="Bahnschrift Bold"
+                       Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold"
                        VerticalAlignment="Center"/>
           </Grid>
           <!-- Progress bar -->
@@ -461,47 +461,47 @@ $xaml = @'
         <!-- Local stats -->
         <Grid Margin="0,0,0,5">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="90"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <TextBlock x:Name="editsLabel" Grid.Column="0" Text="AGENT EDITS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
           <TextBlock x:Name="editsText" Grid.Column="1" Text="--"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#6EE7B7" FontSize="14" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="90"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <TextBlock x:Name="todayLabel" Grid.Column="0" Text="TODAY"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
           <TextBlock x:Name="todayText" Grid.Column="1" Text="--"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#6EE7B7" FontSize="14" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="90"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <TextBlock x:Name="modelLabel" Grid.Column="0" Text="TOP MODEL"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
           <TextBlock x:Name="modelText" Grid.Column="1" Text="--"
-                     Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
+                     Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,10">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="90"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <TextBlock x:Name="sessLabel" Grid.Column="0" Text="SESSIONS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
           <TextBlock x:Name="sessText" Grid.Column="1" Text="--"
-                     Foreground="#94A3B8" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#94A3B8" FontSize="14" FontFamily="Consolas"/>
         </Grid>
 
         <!-- Footer divider -->
@@ -529,7 +529,7 @@ $xaml = @'
           </Viewbox>
           <TextBlock x:Name="gssLabel" Grid.Column="1"
                      Text="Global Shop Solutions"
-                     Foreground="#3A6E52" FontSize="9" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#5CA882" FontSize="10" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
         </Grid>
 
