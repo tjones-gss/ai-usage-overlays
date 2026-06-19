@@ -12,9 +12,7 @@ Always-on-top Windows HUD for Cursor IDE usage. Shows live request counts and on
 
 ## Requirements
 
-- Windows 10/11
-- PowerShell 7+
-- Python 3 (reads Cursor's SQLite databases)
+- Windows 10/11 (PowerShell is built in — no separate install needed)
 - Cursor IDE installed and signed in
 
 ## Install
@@ -24,6 +22,9 @@ Install.bat
 ```
 
 Registers a login startup shortcut and starts the overlay immediately.
+PowerShell 7 (`pwsh`) is used automatically if installed; otherwise the
+built-in Windows PowerShell 5.1 (`powershell.exe`) is used. No Python
+or additional prerequisites required.
 
 ## Auth
 

@@ -30,6 +30,9 @@ $script:LnkPath   = Join-Path ([Environment]::GetFolderPath('Startup')) 'CursorU
 $script:StateVscdb = Join-Path $env:APPDATA 'Cursor\User\globalStorage\state.vscdb'
 $script:TrackingDb = Join-Path $env:USERPROFILE '.cursor\ai-tracking\ai-code-tracking.db'
 
+# Ensure TLS 1.2 for HTTPS calls (required on Windows PowerShell 5.1)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 function Install-Autostart {
     $ws = New-Object -ComObject WScript.Shell
     $sc = $ws.CreateShortcut($script:LnkPath)
