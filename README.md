@@ -17,14 +17,26 @@ Always-on-top Windows HUD for Cursor IDE usage. Shows live request counts and on
 
 ## Install
 
-```bat
-Install.bat
+### Option A — Download zip (recommended for internal use)
+
+1. Download `CursorUsageOverlay.zip` from the internal link
+2. Extract anywhere (e.g. Downloads)
+3. Run `Install.bat`
+
+The installer copies everything to `%LOCALAPPDATA%\CursorUsageOverlay` and
+registers a login startup shortcut. You can delete the zip and extracted folder
+after install.
+
+### Option B — One-liner (when hosted on an internal URL)
+
+```powershell
+iwr -useb https://<internal-url>/install.ps1 | iex
 ```
 
-Registers a login startup shortcut and starts the overlay immediately.
-PowerShell 7 (`pwsh`) is used automatically if installed; otherwise the
-built-in Windows PowerShell 5.1 (`powershell.exe`) is used. No Python
-or additional prerequisites required.
+## Uninstall
+
+Run `Uninstall.bat` from `%LOCALAPPDATA%\CursorUsageOverlay` (or the original
+download folder — either works).
 
 ## Auth
 
