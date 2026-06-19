@@ -2,6 +2,8 @@
 
 Always-on-top Windows HUD for Claude Code usage. Shows live limits from `claude.ai/settings/limits`.
 
+![Claude overlay](docs/preview.png)
+
 ## What It Shows
 
 - **5-hour session** — % used with time-to-reset countdown
