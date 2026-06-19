@@ -587,7 +587,7 @@ function Update-UI {
 
         $script:window.FindName('reqCount').Text = "$used / $limit"
         $script:window.FindName('reqReset').Text = Format-Reset $d.startOfMonth
-        $time.Text = if ($script:AuthState -eq 'ok') { $script:LastFetch } else { $script:ErrMsg }
+        $time.Text = $script:LastFetch
 
         if ($script:notify) {
             $script:notify.Text = "Cursor  $used/$limit requests used"
@@ -597,20 +597,29 @@ function Update-UI {
         $script:window.FindName('reqCount').Text = '-- / --'
         $pill = $script:window.FindName('overPill')
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
-        $time.Text = if ($script:ErrMsg) { $script:ErrMsg } else { 'connecting...' }
+        $time.Text = $script:LastFetch
     }
 
     # On-demand spend from usage-summary
     $od = $script:window.FindName('onDemandText')
     if ($od) {
-        $sum = $script:SummaryData
-        if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
-            $cents = [double]$sum.individualUsage.onDemand.used
-            $dollars = $cents / 100.0
-            $od.Text = ('${0:N2}' -f $dollars)
-            $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
+        if ($script:AuthState -eq 'auth' -or $script:AuthState -eq 'notoken') {
+            # Error state — show message in hero area, time slot stays clean
+            $od.FontSize = 11
+            $od.Text = $script:ErrMsg
+            $od.Foreground = NewBrush '#F87171'
         } else {
-            $od.Text = '--'
+            $od.FontSize = 30
+            $sum = $script:SummaryData
+            if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
+                $cents = [double]$sum.individualUsage.onDemand.used
+                $dollars = $cents / 100.0
+                $od.Text = ('${0:N2}' -f $dollars)
+                $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
+            } else {
+                $od.Text = '--'
+                $od.Foreground = NewBrush '#5B9A80'
+            }
         }
     }
 
