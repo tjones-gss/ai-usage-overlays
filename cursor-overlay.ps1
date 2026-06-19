@@ -162,46 +162,59 @@ function Format-Reset([string]$isoDate) {
 }
 
 # ---------------------------------------------------------------------------
-# Python helper — reads Cursor's SQLite databases (no sqlite3.exe needed)
+# SQLite helper — reads Cursor's SQLite databases via bundled sqlite3.exe
 # ---------------------------------------------------------------------------
-function Invoke-Python([string]$code) {
-    $py = Get-Command python -EA SilentlyContinue
-    if (-not $py) { $py = Get-Command python3 -EA SilentlyContinue }
-    if (-not $py) { return $null }
+function Invoke-Sqlite {
+    param([string]$DbPath, [string]$Query)
+    $exe = $null
+    if ($PSScriptRoot) {
+        $candidate = Join-Path $PSScriptRoot 'sqlite3.exe'
+        if (Test-Path $candidate) { $exe = $candidate }
+    }
+    if (-not $exe) {
+        $cmd = Get-Command sqlite3.exe -ErrorAction SilentlyContinue
+        if ($cmd) { $exe = $cmd.Source }
+    }
+    if (-not $exe) { return $null }
     try {
-        $result = & $py.Path -c $code 2>$null
-        return $result
-    } catch { return $null }
+        # sqlite3 -json may return output as a string array (one line per line);
+        # join into a single string so ConvertFrom-Json can parse the full JSON.
+        $lines = & $exe -readonly -json $DbPath $Query 2>$null
+        if ($lines) { $lines -join '' } else { $null }
+    } catch { $null }
 }
 
 function Get-CursorToken {
-    $code = @"
-import sqlite3, base64, json
-try:
-    db = r'$($script:StateVscdb.Replace('\','\\'))'
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    tok_row = cur.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'").fetchone()
-    uid_row = cur.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/cachedEmail'").fetchone()
-    conn.close()
-    if tok_row:
-        tok = tok_row[0].strip('"')
-        print('TOKEN:' + tok)
-        try:
-            parts = tok.split('.')
-            padding = 4 - len(parts[1]) % 4
-            payload = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (padding if padding != 4 else 0)))
-            if 'sub' in payload: print('USERID:' + payload['sub'])
-        except: pass
-    if uid_row: print('EMAIL:' + uid_row[0].strip('"'))
-except Exception as e:
-    print('ERROR:' + str(e))
-"@
-    $out = Invoke-Python $code
-    if (-not $out) { return $null, $null, $null }
-    $tok    = ($out | Where-Object { $_ -like 'TOKEN:*' })  -replace '^TOKEN:',''
-    $userId = ($out | Where-Object { $_ -like 'USERID:*' }) -replace '^USERID:',''
-    $email  = ($out | Where-Object { $_ -like 'EMAIL:*' })  -replace '^EMAIL:',''
+    # Read accessToken and email from state.vscdb
+    $raw = Invoke-Sqlite $script:StateVscdb "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/accessToken','cursorAuth/cachedEmail')"
+    if (-not $raw) { return $null, $null, $null }
+    $rows = $null
+    try { $rows = $raw | ConvertFrom-Json } catch { return $null, $null, $null }
+    if (-not $rows) { return $null, $null, $null }
+
+    $tok    = $null
+    $email  = $null
+    $userId = $null
+
+    foreach ($row in $rows) {
+        if ($row.key -eq 'cursorAuth/accessToken') { $tok   = $row.value -replace '^"|"$','' }
+        if ($row.key -eq 'cursorAuth/cachedEmail')  { $email = $row.value -replace '^"|"$','' }
+    }
+
+    # Decode JWT payload to extract userId (sub field)
+    if ($tok) {
+        try {
+            $parts = $tok -split '\.'
+            if ($parts.Count -ge 2) {
+                $b64 = $parts[1]
+                $pad = $b64.Length % 4
+                if ($pad -ne 0) { $b64 += '=' * (4 - $pad) }
+                $payload = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)) | ConvertFrom-Json
+                if ($payload.sub) { $userId = $payload.sub }
+            }
+        } catch { }
+    }
+
     return $tok, $userId, $email
 }
 
@@ -239,48 +252,63 @@ function Get-CursorUsage {
 }
 
 # ---------------------------------------------------------------------------
-# Local stats from ai-code-tracking.db via Python
+# Local stats from ai-code-tracking.db via sqlite3.exe
 # ---------------------------------------------------------------------------
 function Get-CursorLocalStats {
-    $code = @"
-import sqlite3, json
-from datetime import datetime, timezone
-try:
-    db = r'$($script:TrackingDb.Replace('\','\\'))'
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
+    if (-not (Test-Path $script:TrackingDb)) { return }
 
-    total = cur.execute("SELECT COUNT(*) FROM ai_code_hashes").fetchone()[0]
+    # Total edits
+    $rawTotal = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes"
+    if (-not $rawTotal) { return }
+    $total = 0
+    try {
+        $totalRows = $rawTotal | ConvertFrom-Json
+        if ($totalRows -and $totalRows.cnt) { $total = [int]$totalRows.cnt }
+    } catch { return }
 
-    # Today in UTC
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    today_count = cur.execute(
-        "SELECT COUNT(*) FROM ai_code_hashes WHERE date(createdAt/1000,'unixepoch') = ?", (today,)
-    ).fetchone()[0]
+    # Today edits (createdAt is milliseconds since epoch)
+    $rawToday = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes WHERE date(createdAt/1000,'unixepoch') = date('now')"
+    $todayCount = 0
+    try {
+        if ($rawToday) {
+            $todayRows = $rawToday | ConvertFrom-Json
+            if ($todayRows -and $null -ne $todayRows.cnt) { $todayCount = [int]$todayRows.cnt }
+        }
+    } catch { }
 
     # Top model
-    model_row = cur.execute(
-        "SELECT model, COUNT(*) as c FROM ai_code_hashes GROUP BY model ORDER BY c DESC LIMIT 1"
-    ).fetchone()
-    top_model = model_row[0] if model_row else 'unknown'
-    top_count = model_row[1] if model_row else 0
-    top_pct   = round(top_count / total * 100) if total else 0
-
-    # Conversations
-    convos = cur.execute("SELECT COUNT(DISTINCT conversationId) FROM ai_code_hashes").fetchone()[0]
-
-    conn.close()
-    print(json.dumps({'total': total, 'today': today_count, 'topModel': top_model,
-                      'topPct': top_pct, 'convos': convos}))
-except Exception as e:
-    print(json.dumps({'error': str(e)}))
-"@
-    $out = Invoke-Python $code
-    if (-not $out) { return }
+    $rawModel = Invoke-Sqlite $script:TrackingDb "SELECT model, COUNT(*) AS c FROM ai_code_hashes GROUP BY model ORDER BY c DESC LIMIT 1"
+    $topModel = 'unknown'
+    $topPct   = 0
     try {
-        $d = $out | ConvertFrom-Json
-        if (-not $d.error) { $script:LocalData = $d }
+        if ($rawModel) {
+            $modelRow = $rawModel | ConvertFrom-Json
+            if ($modelRow -and $modelRow.model) {
+                $topModel = $modelRow.model
+                if ($total -gt 0) {
+                    $topPct = [int][Math]::Round([int]$modelRow.c * 100.0 / $total)
+                }
+            }
+        }
     } catch { }
+
+    # Distinct conversations
+    $rawConvos = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(DISTINCT conversationId) AS cnt FROM ai_code_hashes"
+    $convos = 0
+    try {
+        if ($rawConvos) {
+            $convoRows = $rawConvos | ConvertFrom-Json
+            if ($convoRows -and $null -ne $convoRows.cnt) { $convos = [int]$convoRows.cnt }
+        }
+    } catch { }
+
+    $script:LocalData = [PSCustomObject]@{
+        total    = $total
+        today    = $todayCount
+        topModel = $topModel
+        topPct   = $topPct
+        convos   = $convos
+    }
 }
 
 # ---------------------------------------------------------------------------
