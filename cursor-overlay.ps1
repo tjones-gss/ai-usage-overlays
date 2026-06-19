@@ -355,7 +355,7 @@ $xaml = @'
       <StackPanel Margin="14,10,14,14" Width="250">
 
         <!-- Header -->
-        <Grid Margin="0,0,0,12">
+        <Grid Margin="0,0,0,10">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
@@ -371,47 +371,14 @@ $xaml = @'
                      Foreground="#5A9A80" FontSize="10" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- Included Requests bar -->
+        <!-- ON-DEMAND HERO -->
         <StackPanel Margin="0,0,0,10">
-          <Grid Margin="0,0,0,4">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
-                       Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
-            <TextBlock Grid.Column="1" x:Name="reqPct" Text="--" Foreground="#F1F5F9"
-                       FontSize="24" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,5,0"/>
-            <TextBlock Grid.Column="2" x:Name="reqReset" Text=""
-                       Foreground="#5B9A80" FontSize="10" FontFamily="Consolas"
-                       VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-          </Grid>
-          <Border x:Name="barTrack" Height="8" CornerRadius="4" Background="#0E2018" Width="250" HorizontalAlignment="Left">
-            <Border x:Name="reqBar" Height="8" CornerRadius="4" HorizontalAlignment="Left" Width="0">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                  <GradientStop Color="#065F46" Offset="0"/>
-                  <GradientStop Color="#34D399" Offset="1"/>
-                </LinearGradientBrush>
-              </Border.Background>
-            </Border>
-          </Border>
-          <TextBlock x:Name="reqSub" Text="used" Foreground="#2D7A5A"
-                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,2,0,0"/>
+          <TextBlock x:Name="onDemandLabel" Text="ON-DEMAND THIS CYCLE"
+                     Foreground="#5B9A80" FontSize="9" FontFamily="Bahnschrift SemiBold"
+                     Margin="0,0,0,2"/>
+          <TextBlock x:Name="onDemandText" Text="--"
+                     Foreground="#FBBF24" FontSize="30" FontFamily="Bahnschrift Bold"/>
         </StackPanel>
-
-        <!-- Used count row -->
-        <Grid Margin="0,0,0,12">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-          </Grid.ColumnDefinitions>
-          <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
-                     Foreground="#5B9A80" FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"/>
-          <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
-        </Grid>
 
         <!-- Divider -->
         <Border x:Name="divider" Height="1" Margin="0,0,0,10">
@@ -425,43 +392,128 @@ $xaml = @'
           </Border.Background>
         </Border>
 
-        <!-- On-demand spend -->
-        <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-          <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--"
-                     Foreground="#FBBF24" FontSize="13" FontFamily="Consolas"/>
-        </Grid>
+        <!-- Included Requests -->
+        <StackPanel Margin="0,0,0,10">
+          <!-- Label row: section label + over pill + reset countdown -->
+          <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
+                       Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <Border x:Name="overPill" Grid.Column="1" Background="#1F1800"
+                    BorderBrush="#FBBF24" BorderThickness="1" CornerRadius="3"
+                    Padding="3,1,3,1" VerticalAlignment="Center" HorizontalAlignment="Left"
+                    Visibility="Collapsed">
+              <TextBlock Text="over" Foreground="#FBBF24" FontSize="8"
+                         FontFamily="Bahnschrift SemiBold"/>
+            </Border>
+            <TextBlock x:Name="reqReset" Grid.Column="2" Text=""
+                       Foreground="#5B9A80" FontSize="9" FontFamily="Consolas"
+                       VerticalAlignment="Center"/>
+          </Grid>
+          <!-- Count row -->
+          <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
+                       Foreground="#5B9A80" FontSize="10" FontFamily="Segoe UI"
+                       VerticalAlignment="Center"/>
+            <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
+                       Foreground="#6EE7B7" FontSize="11" FontFamily="Bahnschrift Bold"
+                       VerticalAlignment="Center"/>
+          </Grid>
+          <!-- Progress bar -->
+          <Border x:Name="barTrack" Height="6" CornerRadius="3" Background="#0E2018"
+                  Width="250" HorizontalAlignment="Left">
+            <Border x:Name="reqBar" Height="6" CornerRadius="3"
+                    HorizontalAlignment="Left" Width="0">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                  <GradientStop Color="#065F46" Offset="0"/>
+                  <GradientStop Color="#34D399" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
+          </Border>
+        </StackPanel>
 
         <!-- Local stats -->
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="editsLabel" Grid.Column="0" Text="AGENT EDITS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="editsText" Grid.Column="1" Text="--"
                      Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="todayLabel" Grid.Column="0" Text="TODAY"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="todayText" Grid.Column="1" Text="--"
                      Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="modelLabel" Grid.Column="0" Text="TOP MODEL"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="modelText" Grid.Column="1" Text="--"
                      Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
         </Grid>
-        <Grid>
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid Margin="0,0,0,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="sessLabel" Grid.Column="0" Text="SESSIONS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="sessText" Grid.Column="1" Text="--"
                      Foreground="#94A3B8" FontSize="13" FontFamily="Consolas"/>
+        </Grid>
+
+        <!-- Footer divider -->
+        <Border Height="1" Margin="0,0,0,8">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+              <GradientStop Color="Transparent" Offset="0"/>
+              <GradientStop Color="#301D2B1B" Offset="0.5"/>
+              <GradientStop Color="Transparent" Offset="1"/>
+            </LinearGradientBrush>
+          </Border.Background>
+        </Border>
+
+        <!-- GSS Footer branding -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Viewbox Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center">
+            <Path Fill="#2D9F48"
+                  Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+          </Viewbox>
+          <TextBlock x:Name="gssLabel" Grid.Column="1"
+                     Text="Global Shop Solutions"
+                     Foreground="#2D4A35" FontSize="9" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
         </Grid>
 
       </StackPanel>
@@ -498,25 +550,21 @@ function Update-UI {
         $pct   = if ($limit -gt 0) { [math]::Min(100, [math]::Round($used / $limit * 100)) } else { 0 }
         $over  = $used -gt $limit
 
+        # Bar width
         $bar = $script:window.FindName('reqBar')
         $bar.Width = [math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth))
 
+        # Over pill and bar color
+        $pill = $script:window.FindName('overPill')
         if ($over) {
-            $bar.Background = New-Object System.Windows.Media.LinearGradientBrush
-            $bar.Background.StartPoint = [System.Windows.Point]::new(0,0)
-            $bar.Background.EndPoint   = [System.Windows.Point]::new(1,0)
-            $s1 = New-Object System.Windows.Media.GradientStop; $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString('#991B1B'); $s1.Offset = 0
-            $s2 = New-Object System.Windows.Media.GradientStop; $s2.Color = [System.Windows.Media.ColorConverter]::ConvertFromString('#F87171'); $s2.Offset = 1
-            [void]$bar.Background.GradientStops.Add($s1); [void]$bar.Background.GradientStops.Add($s2)
-            $script:window.FindName('reqPct').Foreground  = NewBrush '#F87171'
-            $script:window.FindName('reqPct').Text        = 'OVER'
-            $script:window.FindName('reqSub').Text        = 'limit exceeded'
-            $script:window.FindName('reqSub').Foreground  = NewBrush '#7F1D1D'
+            # Amber bar — going over is expected, informational not alarming
+            $bar.Background = New-GradBrush '#78350F' '#FBBF24'
+            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
         } else {
-            $script:window.FindName('reqPct').Foreground = NewBrush (if ($pct -ge 90) { '#F87171' } elseif ($pct -ge 75) { '#FBBF24' } else { '#F1F5F9' })
-            $script:window.FindName('reqPct').Text = ('{0}%' -f $pct)
-            $script:window.FindName('reqSub').Text       = 'used'
-            $script:window.FindName('reqSub').Foreground = NewBrush '#0D3D2F'
+            # Restore theme bar color
+            $t = $script:Themes[$script:Cfg.Theme]
+            if ($t) { $bar.Background = New-GradBrush $t.BarC1 $t.BarC2 }
+            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         }
 
         $script:window.FindName('reqCount').Text = "$used / $limit"
@@ -527,9 +575,10 @@ function Update-UI {
             $script:notify.Text = "Cursor  $used/$limit requests used"
         }
     } else {
-        $script:window.FindName('reqPct').Text   = '--'
         $script:window.FindName('reqBar').Width  = 0
         $script:window.FindName('reqCount').Text = '-- / --'
+        $pill = $script:window.FindName('overPill')
+        if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         $time.Text = if ($script:ErrMsg) { $script:ErrMsg } else { 'connecting...' }
     }
 
