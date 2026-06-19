@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 set "DEST=%LOCALAPPDATA%\CursorUsageOverlay"
 set "PIDFILE=%DEST%\cursor-overlay.pid"
 
@@ -10,7 +10,7 @@ echo.
 if exist "%PIDFILE%" (
     set /p OVL_PID=<"%PIDFILE%"
     echo Stopping overlay process...
-    taskkill /PID %OVL_PID% /F >nul 2>nul
+    taskkill /PID !OVL_PID! /F >nul 2>nul
     timeout /t 1 /nobreak >nul
 )
 

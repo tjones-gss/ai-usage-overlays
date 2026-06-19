@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 set "DEST=%LOCALAPPDATA%\CursorUsageOverlay"
 
 echo Installing Cursor Usage Overlay...
@@ -24,7 +24,7 @@ if %errorlevel%==0 (
     pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%DEST%\cursor-overlay.ps1" -Install
 ) else (
     where powershell >nul 2>nul
-    if %errorlevel%==0 (
+    if !errorlevel!==0 (
         echo Using Windows PowerShell ^(built-in^)
         powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%DEST%\cursor-overlay.ps1" -Install
     ) else (
