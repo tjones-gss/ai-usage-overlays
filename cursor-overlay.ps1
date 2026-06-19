@@ -98,28 +98,32 @@ $script:BarTrackWidth = 250.0
 # ---------------------------------------------------------------------------
 $script:Themes = [ordered]@{
     'Cursor Green' = @{
+        BgC1 = '#0A1628'; BgC2 = '#060E1C'; BorderC1 = '#0F3D2F'
         BarC1 = '#065F46'; BarC2 = '#34D399'
-        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#5B9A80'
-        BarTrack = '#0E2018'; OnDemandFg = '#FBBF24'
+        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#4A8870'
+        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3A6E52'
         Stripe = '#065F46','#34D399','#6EE7B7','#A7F3D0'
     }
-    'Deep Space' = @{
-        BarC1 = '#1E3A8A'; BarC2 = '#60A5FA'
-        LabelFg = '#60A5FA'; ValueFg = '#93C5FD'; DimFg = '#4B6A8A'
-        BarTrack = '#0A1628'; OnDemandFg = '#FBBF24'
-        Stripe = '#38BDF8','#818CF8','#E879F9','#FB923C'
+    'Global Shop' = @{
+        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'
+        BarC1 = '#1A5C2A'; BarC2 = '#2D9F48'
+        LabelFg = '#2D9F48'; ValueFg = '#4AE068'; DimFg = '#2D5038'
+        BarTrack = '#0D1F0F'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3DC95A'
+        Stripe = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
     }
-    'Neon' = @{
-        BarC1 = '#BE185D'; BarC2 = '#F472B6'
-        LabelFg = '#F472B6'; ValueFg = '#FBCFE8'; DimFg = '#9D174D'
-        BarTrack = '#1A0512'; OnDemandFg = '#FDE047'
-        Stripe = '#F472B6','#4ADE80','#60A5FA','#FDE047'
+    'Deep Space' = @{
+        BgC1 = '#0F111A'; BgC2 = '#080A12'; BorderC1 = '#252B44'
+        BarC1 = '#2D3A8A'; BarC2 = '#818CF8'
+        LabelFg = '#818CF8'; ValueFg = '#A5B4FC'; DimFg = '#3D4B6B'
+        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; GssLabelFg = '#3D4B6B'
+        Stripe = '#38BDF8','#818CF8','#C084FC','#FB923C'
     }
     'Mono' = @{
-        BarC1 = '#374151'; BarC2 = '#9CA3AF'
-        LabelFg = '#9CA3AF'; ValueFg = '#D1D5DB'; DimFg = '#6B7280'
-        BarTrack = '#111827'; OnDemandFg = '#D1D5DB'
-        Stripe = '#374151','#6B7280','#9CA3AF','#6B7280'
+        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'
+        BarC1 = '#262626'; BarC2 = '#D4D4D4'
+        LabelFg = '#D4D4D4'; ValueFg = '#FAFAFA'; DimFg = '#525252'
+        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; GssLabelFg = '#525252'
+        Stripe = '#404040','#737373','#A3A3A3','#E5E5E5'
     }
 }
 
@@ -134,6 +138,16 @@ function NewBrush([string]$hex) {
 function New-GradBrush([string]$c1, [string]$c2) {
     $b = New-Object System.Windows.Media.LinearGradientBrush
     $b.StartPoint = [System.Windows.Point]::new(0,0); $b.EndPoint = [System.Windows.Point]::new(1,0)
+    $s1 = New-Object System.Windows.Media.GradientStop
+    $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c1); $s1.Offset = 0
+    $s2 = New-Object System.Windows.Media.GradientStop
+    $s2.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c2); $s2.Offset = 1
+    [void]$b.GradientStops.Add($s1); [void]$b.GradientStops.Add($s2); return $b
+}
+
+function New-DiagGradBrush([string]$c1, [string]$c2) {
+    $b = New-Object System.Windows.Media.LinearGradientBrush
+    $b.StartPoint = [System.Windows.Point]::new(0,0); $b.EndPoint = [System.Windows.Point]::new(0.7,1)
     $s1 = New-Object System.Windows.Media.GradientStop
     $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c1); $s1.Offset = 0
     $s2 = New-Object System.Windows.Media.GradientStop
@@ -320,23 +334,24 @@ function Get-CursorLocalStats {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Cursor Usage" WindowStyle="None" AllowsTransparency="False"
-        Background="#0A1628" Topmost="True" ShowInTaskbar="False"
+        Title="Cursor Usage" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="Manual">
 
-  <Border BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+  <Grid Margin="12">
+  <Border x:Name="mainBorder" BorderThickness="1" CornerRadius="16" ClipToBounds="True">
+    <Border.Effect>
+      <DropShadowEffect Color="#000000" BlurRadius="16" Opacity="0.5" ShadowDepth="0"/>
+    </Border.Effect>
     <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="0.7,1">
         <GradientStop Color="#FF0A1628" Offset="0"/>
-        <GradientStop Color="#FF071020" Offset="1"/>
+        <GradientStop Color="#FF060E1C" Offset="1"/>
       </LinearGradientBrush>
     </Border.Background>
     <Border.BorderBrush>
-      <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FF0D3D2F" Offset="0"/>
-        <GradientStop Color="#FF0A1628" Offset="1"/>
-      </LinearGradientBrush>
+      <SolidColorBrush Color="#FF0F3D2F"/>
     </Border.BorderBrush>
     <DockPanel>
 
@@ -506,19 +521,22 @@ $xaml = @'
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
-          <Viewbox Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center">
-            <Path Fill="#2D9F48"
-                  Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+          <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
+            <Canvas Width="300" Height="296">
+              <Path x:Name="gssPath" Fill="#2D9F48"
+                    Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+            </Canvas>
           </Viewbox>
           <TextBlock x:Name="gssLabel" Grid.Column="1"
                      Text="Global Shop Solutions"
-                     Foreground="#2D4A35" FontSize="9" FontFamily="Bahnschrift SemiBold"
+                     Foreground="#3A6E52" FontSize="9" FontFamily="Bahnschrift SemiBold"
                      VerticalAlignment="Center"/>
         </Grid>
 
       </StackPanel>
     </DockPanel>
   </Border>
+  </Grid>
 </Window>
 '@
 
@@ -618,6 +636,13 @@ function Apply-CursorTheme([string]$name) {
     $t = $script:Themes[$name]
     if (-not $t) { $t = $script:Themes['Cursor Green'] }
 
+    # Main panel background and border
+    $mb = $script:window.FindName('mainBorder')
+    if ($mb -and $t.BgC1) {
+        $mb.Background = New-DiagGradBrush $t.BgC1 $t.BgC2
+        $mb.BorderBrush = NewBrush $t.BorderC1
+    }
+
     # Bar gradient and track
     $rb = $script:window.FindName('reqBar')
     if ($rb) { $rb.Background = New-GradBrush $t.BarC1 $t.BarC2 }
@@ -647,6 +672,17 @@ function Apply-CursorTheme([string]$name) {
     # On-demand color
     $od = $script:window.FindName('onDemandText')
     if ($od) { $od.Foreground = NewBrush $t.OnDemandFg }
+
+    # GSS footer label
+    $gss = $script:window.FindName('gssLabel')
+    if ($gss -and $t.GssLabelFg) { $gss.Foreground = NewBrush $t.GssLabelFg }
+
+    # GSS path color: GSS Green always, but brighter in Global Shop theme
+    $gp = $script:window.FindName('gssPath')
+    if ($gp) {
+        $gssGreen = if ($name -eq 'Global Shop') { '#3DC95A' } else { '#2D9F48' }
+        $gp.Fill = NewBrush $gssGreen
+    }
 
     # Accent stripe
     $stripe = $script:window.FindName('accentStripe')
