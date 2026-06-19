@@ -15,9 +15,9 @@ Each overlay lives on its own branch — clone only what you need.
 
 ## Requirements
 
-- Windows 10/11
-- PowerShell 7+ (`winget install Microsoft.PowerShell`)
-- Python 3 (for Cursor overlay — reads SQLite databases; usually already installed)
+- Windows 10/11 (PowerShell is built in — no separate install needed)
+- Cursor overlay: Cursor IDE signed in
+- Claude overlay: Claude Code CLI signed in (`claude auth login`)
 
 ## Quick Install
 
@@ -37,7 +37,7 @@ CursorUsageOverlay\Install.bat
 
 - **Always on top** — stays visible over all other windows
 - **System tray icon** — left-click to show/hide, right-click for menu
-- **4 color themes** — Cursor Green, Deep Space, Neon, Mono (right-click → Theme)
+- **4 color themes** — Global Shop, Deep Space, Ocean, Mono (right-click → Theme)
 - **Drag to reposition** — position is saved between restarts
 - **Opacity control** — right-click → Opacity
 - **Snap to corners** — right-click → Snap to corner
@@ -54,4 +54,4 @@ No external dependencies, no installers, no elevated permissions required.
 
 ## Uninstall
 
-Run `Uninstall.bat` in the cloned folder, or right-click the tray icon → Quit, then delete the folder.
+Run `Uninstall.bat` from `%LOCALAPPDATA%\CursorUsageOverlay` or `%LOCALAPPDATA%\ClaudeUsageOverlay`, or right-click the tray icon → Quit.
