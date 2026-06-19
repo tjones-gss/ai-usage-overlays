@@ -1,0 +1,95 @@
+# Config.ps1 — shared constants, pricing table, color themes, and default settings
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+$script:PollSeconds    = 180
+$script:TickSeconds    = 30
+$script:BarTrackWidth  = 250.0
+$script:WarnPct        = 80
+$script:CritPct        = 95
+
+# ---------------------------------------------------------------------------
+# Pricing table
+# ---------------------------------------------------------------------------
+$script:PricesAsOf = '2026-06-01'
+$script:Prices = @{
+    fable  = @{ in = 10.0; out = 50.0; cw = 12.50; cr = 1.00 }
+    opus   = @{ in = 15.0; out = 75.0; cw = 18.75; cr = 1.50 }
+    sonnet = @{ in = 3.0;  out = 15.0; cw = 3.75;  cr = 0.30 }
+    haiku  = @{ in = 1.0;  out = 5.0;  cw = 1.25;  cr = 0.10 }
+}
+
+# ---------------------------------------------------------------------------
+# User-Agent detection
+# ---------------------------------------------------------------------------
+$script:UA = 'claude-code/2.1.0'
+try { $v = (& claude --version) 2>$null; if ($v -match '(\d+\.\d+\.\d+)') { $script:UA = "claude-code/$($matches[1])" } } catch { }
+
+# ---------------------------------------------------------------------------
+# Color themes
+# ---------------------------------------------------------------------------
+$script:Themes = [ordered]@{
+    'Deep Space' = @{
+        BgC1 = '#0F172A'; BgC2 = '#080C18'; BorderC1 = '#1E3A5F'; GssLabelFg = '#5C8AAA'
+        FivehColors = '#0369A1','#38BDF8'
+        WeekColors  = '#C2410C','#FB923C'
+        SonColors   = '#6D28D9','#C084FC'
+        OpusColors  = '#92400E','#FDE047'
+        FivehFg     = '#38BDF8'
+        WeekFg      = '#FB923C'
+        SonFg       = '#C084FC'
+        OpusFg      = '#FDE047'
+        Stripe      = '#38BDF8','#818CF8','#E879F9','#FB923C'
+    }
+    'Global Shop' = @{
+        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'; GssLabelFg = '#3DC95A'
+        FivehColors = '#1A5C2A','#2D9F48'
+        WeekColors  = '#1A5C2A','#4AE068'
+        SonColors   = '#166534','#86EFAC'
+        OpusColors  = '#92400E','#FDE047'
+        FivehFg     = '#2D9F48'
+        WeekFg      = '#4AE068'
+        SonFg       = '#86EFAC'
+        OpusFg      = '#FDE047'
+        Stripe      = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
+    }
+    'Ocean' = @{
+        BgC1 = '#0F1F2E'; BgC2 = '#091420'; BorderC1 = '#1A4060'; GssLabelFg = '#5C8AAA'
+        FivehColors = '#0F766E','#2DD4BF'
+        WeekColors  = '#9D174D','#FB7185'
+        SonColors   = '#1E40AF','#93C5FD'
+        OpusColors  = '#92400E','#FCD34D'
+        FivehFg     = '#2DD4BF'
+        WeekFg      = '#FB7185'
+        SonFg       = '#93C5FD'
+        OpusFg      = '#FCD34D'
+        Stripe      = '#2DD4BF','#93C5FD','#FB7185','#FCD34D'
+    }
+    'Mono' = @{
+        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'; GssLabelFg = '#909090'
+        FivehColors = '#1E3A5F','#94A3B8'
+        WeekColors  = '#1E3A5F','#94A3B8'
+        SonColors   = '#1E3A5F','#94A3B8'
+        OpusColors  = '#1E3A5F','#94A3B8'
+        FivehFg     = '#94A3B8'
+        WeekFg      = '#94A3B8'
+        SonFg       = '#94A3B8'
+        OpusFg      = '#94A3B8'
+        Stripe      = '#334155','#64748B','#94A3B8','#64748B'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Default config
+# ---------------------------------------------------------------------------
+$script:Cfg = @{
+    Left        = $null
+    Top         = $null
+    Opacity     = 1.0
+    StartHidden = $false
+    ShowStats   = $true
+    Theme       = 'Deep Space'
+    ShowAlerts  = $true    # NEW: enable threshold balloon alerts
+    ShowGraph   = $false   # NEW: show history sparkline (off by default to keep panel compact)
+}
