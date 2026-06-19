@@ -30,6 +30,9 @@ $script:LnkPath   = Join-Path ([Environment]::GetFolderPath('Startup')) 'CursorU
 $script:StateVscdb = Join-Path $env:APPDATA 'Cursor\User\globalStorage\state.vscdb'
 $script:TrackingDb = Join-Path $env:USERPROFILE '.cursor\ai-tracking\ai-code-tracking.db'
 
+# Ensure TLS 1.2 for HTTPS calls (required on Windows PowerShell 5.1)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 function Install-Autostart {
     $ws = New-Object -ComObject WScript.Shell
     $sc = $ws.CreateShortcut($script:LnkPath)
@@ -95,28 +98,32 @@ $script:BarTrackWidth = 250.0
 # ---------------------------------------------------------------------------
 $script:Themes = [ordered]@{
     'Cursor Green' = @{
+        BgC1 = '#0A1628'; BgC2 = '#060E1C'; BorderC1 = '#0F3D2F'
         BarC1 = '#065F46'; BarC2 = '#34D399'
-        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#5B9A80'
-        BarTrack = '#0E2018'; OnDemandFg = '#FBBF24'
+        LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#7EC4A6'
+        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; GssLabelFg = '#5CA882'
         Stripe = '#065F46','#34D399','#6EE7B7','#A7F3D0'
     }
-    'Deep Space' = @{
-        BarC1 = '#1E3A8A'; BarC2 = '#60A5FA'
-        LabelFg = '#60A5FA'; ValueFg = '#93C5FD'; DimFg = '#4B6A8A'
-        BarTrack = '#0A1628'; OnDemandFg = '#FBBF24'
-        Stripe = '#38BDF8','#818CF8','#E879F9','#FB923C'
+    'Global Shop' = @{
+        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'
+        BarC1 = '#1A5C2A'; BarC2 = '#2D9F48'
+        LabelFg = '#2D9F48'; ValueFg = '#4AE068'; DimFg = '#5AAD78'
+        BarTrack = '#0D1F0F'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3DC95A'
+        Stripe = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
     }
-    'Neon' = @{
-        BarC1 = '#BE185D'; BarC2 = '#F472B6'
-        LabelFg = '#F472B6'; ValueFg = '#FBCFE8'; DimFg = '#9D174D'
-        BarTrack = '#1A0512'; OnDemandFg = '#FDE047'
-        Stripe = '#F472B6','#4ADE80','#60A5FA','#FDE047'
+    'Deep Space' = @{
+        BgC1 = '#0F111A'; BgC2 = '#080A12'; BorderC1 = '#252B44'
+        BarC1 = '#2D3A8A'; BarC2 = '#818CF8'
+        LabelFg = '#818CF8'; ValueFg = '#A5B4FC'; DimFg = '#6B82A8'
+        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; GssLabelFg = '#6B82A8'
+        Stripe = '#38BDF8','#818CF8','#C084FC','#FB923C'
     }
     'Mono' = @{
-        BarC1 = '#374151'; BarC2 = '#9CA3AF'
-        LabelFg = '#9CA3AF'; ValueFg = '#D1D5DB'; DimFg = '#6B7280'
-        BarTrack = '#111827'; OnDemandFg = '#D1D5DB'
-        Stripe = '#374151','#6B7280','#9CA3AF','#6B7280'
+        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'
+        BarC1 = '#262626'; BarC2 = '#D4D4D4'
+        LabelFg = '#D4D4D4'; ValueFg = '#FAFAFA'; DimFg = '#909090'
+        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; GssLabelFg = '#909090'
+        Stripe = '#404040','#737373','#A3A3A3','#E5E5E5'
     }
 }
 
@@ -131,6 +138,16 @@ function NewBrush([string]$hex) {
 function New-GradBrush([string]$c1, [string]$c2) {
     $b = New-Object System.Windows.Media.LinearGradientBrush
     $b.StartPoint = [System.Windows.Point]::new(0,0); $b.EndPoint = [System.Windows.Point]::new(1,0)
+    $s1 = New-Object System.Windows.Media.GradientStop
+    $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c1); $s1.Offset = 0
+    $s2 = New-Object System.Windows.Media.GradientStop
+    $s2.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c2); $s2.Offset = 1
+    [void]$b.GradientStops.Add($s1); [void]$b.GradientStops.Add($s2); return $b
+}
+
+function New-DiagGradBrush([string]$c1, [string]$c2) {
+    $b = New-Object System.Windows.Media.LinearGradientBrush
+    $b.StartPoint = [System.Windows.Point]::new(0,0); $b.EndPoint = [System.Windows.Point]::new(0.7,1)
     $s1 = New-Object System.Windows.Media.GradientStop
     $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c1); $s1.Offset = 0
     $s2 = New-Object System.Windows.Media.GradientStop
@@ -162,46 +179,59 @@ function Format-Reset([string]$isoDate) {
 }
 
 # ---------------------------------------------------------------------------
-# Python helper — reads Cursor's SQLite databases (no sqlite3.exe needed)
+# SQLite helper — reads Cursor's SQLite databases via bundled sqlite3.exe
 # ---------------------------------------------------------------------------
-function Invoke-Python([string]$code) {
-    $py = Get-Command python -EA SilentlyContinue
-    if (-not $py) { $py = Get-Command python3 -EA SilentlyContinue }
-    if (-not $py) { return $null }
+function Invoke-Sqlite {
+    param([string]$DbPath, [string]$Query)
+    $exe = $null
+    if ($PSScriptRoot) {
+        $candidate = Join-Path $PSScriptRoot 'sqlite3.exe'
+        if (Test-Path $candidate) { $exe = $candidate }
+    }
+    if (-not $exe) {
+        $cmd = Get-Command sqlite3.exe -ErrorAction SilentlyContinue
+        if ($cmd) { $exe = $cmd.Source }
+    }
+    if (-not $exe) { return $null }
     try {
-        $result = & $py.Path -c $code 2>$null
-        return $result
-    } catch { return $null }
+        # sqlite3 -json may return output as a string array (one line per line);
+        # join into a single string so ConvertFrom-Json can parse the full JSON.
+        $lines = & $exe -readonly -json $DbPath $Query 2>$null
+        if ($lines) { $lines -join '' } else { $null }
+    } catch { $null }
 }
 
 function Get-CursorToken {
-    $code = @"
-import sqlite3, base64, json
-try:
-    db = r'$($script:StateVscdb.Replace('\','\\'))'
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    tok_row = cur.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'").fetchone()
-    uid_row = cur.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/cachedEmail'").fetchone()
-    conn.close()
-    if tok_row:
-        tok = tok_row[0].strip('"')
-        print('TOKEN:' + tok)
-        try:
-            parts = tok.split('.')
-            padding = 4 - len(parts[1]) % 4
-            payload = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (padding if padding != 4 else 0)))
-            if 'sub' in payload: print('USERID:' + payload['sub'])
-        except: pass
-    if uid_row: print('EMAIL:' + uid_row[0].strip('"'))
-except Exception as e:
-    print('ERROR:' + str(e))
-"@
-    $out = Invoke-Python $code
-    if (-not $out) { return $null, $null, $null }
-    $tok    = ($out | Where-Object { $_ -like 'TOKEN:*' })  -replace '^TOKEN:',''
-    $userId = ($out | Where-Object { $_ -like 'USERID:*' }) -replace '^USERID:',''
-    $email  = ($out | Where-Object { $_ -like 'EMAIL:*' })  -replace '^EMAIL:',''
+    # Read accessToken and email from state.vscdb
+    $raw = Invoke-Sqlite $script:StateVscdb "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/accessToken','cursorAuth/cachedEmail')"
+    if (-not $raw) { return $null, $null, $null }
+    $rows = $null
+    try { $rows = $raw | ConvertFrom-Json } catch { return $null, $null, $null }
+    if (-not $rows) { return $null, $null, $null }
+
+    $tok    = $null
+    $email  = $null
+    $userId = $null
+
+    foreach ($row in $rows) {
+        if ($row.key -eq 'cursorAuth/accessToken') { $tok   = $row.value -replace '^"|"$','' }
+        if ($row.key -eq 'cursorAuth/cachedEmail')  { $email = $row.value -replace '^"|"$','' }
+    }
+
+    # Decode JWT payload to extract userId (sub field)
+    if ($tok) {
+        try {
+            $parts = $tok -split '\.'
+            if ($parts.Count -ge 2) {
+                $b64 = $parts[1]
+                $pad = $b64.Length % 4
+                if ($pad -ne 0) { $b64 += '=' * (4 - $pad) }
+                $payload = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)) | ConvertFrom-Json
+                if ($payload.sub) { $userId = $payload.sub }
+            }
+        } catch { }
+    }
+
     return $tok, $userId, $email
 }
 
@@ -239,48 +269,63 @@ function Get-CursorUsage {
 }
 
 # ---------------------------------------------------------------------------
-# Local stats from ai-code-tracking.db via Python
+# Local stats from ai-code-tracking.db via sqlite3.exe
 # ---------------------------------------------------------------------------
 function Get-CursorLocalStats {
-    $code = @"
-import sqlite3, json
-from datetime import datetime, timezone
-try:
-    db = r'$($script:TrackingDb.Replace('\','\\'))'
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
+    if (-not (Test-Path $script:TrackingDb)) { return }
 
-    total = cur.execute("SELECT COUNT(*) FROM ai_code_hashes").fetchone()[0]
+    # Total edits
+    $rawTotal = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes"
+    if (-not $rawTotal) { return }
+    $total = 0
+    try {
+        $totalRows = $rawTotal | ConvertFrom-Json
+        if ($totalRows -and $totalRows.cnt) { $total = [int]$totalRows.cnt }
+    } catch { return }
 
-    # Today in UTC
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    today_count = cur.execute(
-        "SELECT COUNT(*) FROM ai_code_hashes WHERE date(createdAt/1000,'unixepoch') = ?", (today,)
-    ).fetchone()[0]
+    # Today edits (createdAt is milliseconds since epoch)
+    $rawToday = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes WHERE date(createdAt/1000,'unixepoch') = date('now')"
+    $todayCount = 0
+    try {
+        if ($rawToday) {
+            $todayRows = $rawToday | ConvertFrom-Json
+            if ($todayRows -and $null -ne $todayRows.cnt) { $todayCount = [int]$todayRows.cnt }
+        }
+    } catch { }
 
     # Top model
-    model_row = cur.execute(
-        "SELECT model, COUNT(*) as c FROM ai_code_hashes GROUP BY model ORDER BY c DESC LIMIT 1"
-    ).fetchone()
-    top_model = model_row[0] if model_row else 'unknown'
-    top_count = model_row[1] if model_row else 0
-    top_pct   = round(top_count / total * 100) if total else 0
-
-    # Conversations
-    convos = cur.execute("SELECT COUNT(DISTINCT conversationId) FROM ai_code_hashes").fetchone()[0]
-
-    conn.close()
-    print(json.dumps({'total': total, 'today': today_count, 'topModel': top_model,
-                      'topPct': top_pct, 'convos': convos}))
-except Exception as e:
-    print(json.dumps({'error': str(e)}))
-"@
-    $out = Invoke-Python $code
-    if (-not $out) { return }
+    $rawModel = Invoke-Sqlite $script:TrackingDb "SELECT model, COUNT(*) AS c FROM ai_code_hashes GROUP BY model ORDER BY c DESC LIMIT 1"
+    $topModel = 'unknown'
+    $topPct   = 0
     try {
-        $d = $out | ConvertFrom-Json
-        if (-not $d.error) { $script:LocalData = $d }
+        if ($rawModel) {
+            $modelRow = $rawModel | ConvertFrom-Json
+            if ($modelRow -and $modelRow.model) {
+                $topModel = $modelRow.model
+                if ($total -gt 0) {
+                    $topPct = [int][Math]::Round([int]$modelRow.c * 100.0 / $total)
+                }
+            }
+        }
     } catch { }
+
+    # Distinct conversations
+    $rawConvos = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(DISTINCT conversationId) AS cnt FROM ai_code_hashes"
+    $convos = 0
+    try {
+        if ($rawConvos) {
+            $convoRows = $rawConvos | ConvertFrom-Json
+            if ($convoRows -and $null -ne $convoRows.cnt) { $convos = [int]$convoRows.cnt }
+        }
+    } catch { }
+
+    $script:LocalData = [PSCustomObject]@{
+        total    = $total
+        today    = $todayCount
+        topModel = $topModel
+        topPct   = $topPct
+        convos   = $convos
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -289,28 +334,29 @@ except Exception as e:
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Cursor Usage" WindowStyle="None" AllowsTransparency="False"
-        Background="#0A1628" Topmost="True" ShowInTaskbar="False"
+        Title="Cursor Usage" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="Manual">
 
-  <Border BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+  <Grid Margin="12">
+  <Border x:Name="mainBorder" BorderThickness="1" CornerRadius="16" ClipToBounds="True">
+    <Border.Effect>
+      <DropShadowEffect Color="#000000" BlurRadius="16" Opacity="0.5" ShadowDepth="0"/>
+    </Border.Effect>
     <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="0.7,1">
         <GradientStop Color="#FF0A1628" Offset="0"/>
-        <GradientStop Color="#FF071020" Offset="1"/>
+        <GradientStop Color="#FF060E1C" Offset="1"/>
       </LinearGradientBrush>
     </Border.Background>
     <Border.BorderBrush>
-      <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FF0D3D2F" Offset="0"/>
-        <GradientStop Color="#FF0A1628" Offset="1"/>
-      </LinearGradientBrush>
+      <SolidColorBrush Color="#FF0F3D2F"/>
     </Border.BorderBrush>
     <DockPanel>
 
-      <!-- Theme accent stripe -->
-      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="4">
+      <!-- Theme accent stripe — CornerRadius matches outer border (16-1=15) so it curves with the window -->
+      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="5" CornerRadius="15,15,0,0">
         <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#065F46" Offset="0"/>
@@ -324,63 +370,30 @@ $xaml = @'
       <StackPanel Margin="14,10,14,14" Width="250">
 
         <!-- Header -->
-        <Grid Margin="0,0,0,12">
+        <Grid Margin="0,0,0,10">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Ellipse x:Name="statusDot" Width="7" Height="7" Fill="#34D399"
+            <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="#34D399"
                      VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBlock x:Name="headerLabel" Foreground="#6BBFA0" FontSize="11"
+            <TextBlock x:Name="headerLabel" Foreground="#6BBFA0" FontSize="12"
                        FontFamily="Bahnschrift SemiBold" Text="CURSOR "/>
-            <TextBlock Foreground="#D1FAE5" FontSize="11" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
+            <TextBlock Foreground="#D1FAE5" FontSize="12" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
           </StackPanel>
           <TextBlock x:Name="timeText" Grid.Column="1" Text=""
-                     Foreground="#5A9A80" FontSize="10" FontFamily="Consolas" VerticalAlignment="Center"/>
+                     Foreground="#5A9A80" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- Included Requests bar -->
+        <!-- ON-DEMAND HERO -->
         <StackPanel Margin="0,0,0,10">
-          <Grid Margin="0,0,0,4">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
-                       Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
-            <TextBlock Grid.Column="1" x:Name="reqPct" Text="--" Foreground="#F1F5F9"
-                       FontSize="24" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,5,0"/>
-            <TextBlock Grid.Column="2" x:Name="reqReset" Text=""
-                       Foreground="#5B9A80" FontSize="10" FontFamily="Consolas"
-                       VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-          </Grid>
-          <Border x:Name="barTrack" Height="8" CornerRadius="4" Background="#0E2018" Width="250" HorizontalAlignment="Left">
-            <Border x:Name="reqBar" Height="8" CornerRadius="4" HorizontalAlignment="Left" Width="0">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                  <GradientStop Color="#065F46" Offset="0"/>
-                  <GradientStop Color="#34D399" Offset="1"/>
-                </LinearGradientBrush>
-              </Border.Background>
-            </Border>
-          </Border>
-          <TextBlock x:Name="reqSub" Text="used" Foreground="#2D7A5A"
-                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,2,0,0"/>
+          <TextBlock x:Name="onDemandLabel" Text="ON-DEMAND THIS CYCLE"
+                     Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     Margin="0,0,0,2"/>
+          <TextBlock x:Name="onDemandText" Text="--"
+                     Foreground="#FBBF24" FontSize="30" FontFamily="Bahnschrift Bold"/>
         </StackPanel>
-
-        <!-- Used count row -->
-        <Grid Margin="0,0,0,12">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-          </Grid.ColumnDefinitions>
-          <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
-                     Foreground="#5B9A80" FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"/>
-          <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
-        </Grid>
 
         <!-- Divider -->
         <Border x:Name="divider" Height="1" Margin="0,0,0,10">
@@ -394,48 +407,136 @@ $xaml = @'
           </Border.Background>
         </Border>
 
-        <!-- On-demand spend -->
-        <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-          <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--"
-                     Foreground="#FBBF24" FontSize="13" FontFamily="Consolas"/>
-        </Grid>
+        <!-- Included Requests -->
+        <StackPanel Margin="0,0,0,10">
+          <!-- Label row: section label + over pill + reset countdown -->
+          <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
+                       Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold"
+                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <Border x:Name="overPill" Grid.Column="1" Background="#1F1800"
+                    BorderBrush="#FBBF24" BorderThickness="1" CornerRadius="3"
+                    Padding="3,1,3,1" VerticalAlignment="Center" HorizontalAlignment="Left"
+                    Visibility="Collapsed">
+              <TextBlock Text="over" Foreground="#FBBF24" FontSize="9"
+                         FontFamily="Bahnschrift SemiBold"/>
+            </Border>
+            <TextBlock x:Name="reqReset" Grid.Column="2" Text=""
+                       Foreground="#7EC4A6" FontSize="10" FontFamily="Consolas"
+                       VerticalAlignment="Center"/>
+          </Grid>
+          <!-- Count row -->
+          <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
+                       Foreground="#7EC4A6" FontSize="11" FontFamily="Segoe UI"
+                       VerticalAlignment="Center"/>
+            <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
+                       Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold"
+                       VerticalAlignment="Center"/>
+          </Grid>
+          <!-- Progress bar -->
+          <Border x:Name="barTrack" Height="6" CornerRadius="3" Background="#0E2018"
+                  Width="250" HorizontalAlignment="Left">
+            <Border x:Name="reqBar" Height="6" CornerRadius="3"
+                    HorizontalAlignment="Left" Width="0">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                  <GradientStop Color="#065F46" Offset="0"/>
+                  <GradientStop Color="#34D399" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
+          </Border>
+        </StackPanel>
 
         <!-- Local stats -->
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="editsLabel" Grid.Column="0" Text="AGENT EDITS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="editsText" Grid.Column="1" Text="--"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#6EE7B7" FontSize="14" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="todayLabel" Grid.Column="0" Text="TODAY"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="todayText" Grid.Column="1" Text="--"
-                     Foreground="#6EE7B7" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#6EE7B7" FontSize="14" FontFamily="Consolas"/>
         </Grid>
         <Grid Margin="0,0,0,5">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="modelLabel" Grid.Column="0" Text="TOP MODEL"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="modelText" Grid.Column="1" Text="--"
-                     Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
+                     Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
         </Grid>
-        <Grid>
-          <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid Margin="0,0,0,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
           <TextBlock x:Name="sessLabel" Grid.Column="0" Text="SESSIONS"
-                     Foreground="#5B9A80" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                     Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
           <TextBlock x:Name="sessText" Grid.Column="1" Text="--"
-                     Foreground="#94A3B8" FontSize="13" FontFamily="Consolas"/>
+                     Foreground="#94A3B8" FontSize="14" FontFamily="Consolas"/>
+        </Grid>
+
+        <!-- Footer divider -->
+        <Border Height="1" Margin="0,0,0,8">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+              <GradientStop Color="Transparent" Offset="0"/>
+              <GradientStop Color="#301D2B1B" Offset="0.5"/>
+              <GradientStop Color="Transparent" Offset="1"/>
+            </LinearGradientBrush>
+          </Border.Background>
+        </Border>
+
+        <!-- GSS Footer branding -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
+            <Canvas Width="300" Height="296">
+              <Path x:Name="gssPath" Fill="#2D9F48"
+                    Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+            </Canvas>
+          </Viewbox>
+          <TextBlock x:Name="gssLabel" Grid.Column="1"
+                     Text="Global Shop Solutions"
+                     Foreground="#5CA882" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
         </Grid>
 
       </StackPanel>
     </DockPanel>
   </Border>
+  </Grid>
 </Window>
 '@
 
@@ -467,25 +568,21 @@ function Update-UI {
         $pct   = if ($limit -gt 0) { [math]::Min(100, [math]::Round($used / $limit * 100)) } else { 0 }
         $over  = $used -gt $limit
 
+        # Bar width
         $bar = $script:window.FindName('reqBar')
         $bar.Width = [math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth))
 
+        # Over pill and bar color
+        $pill = $script:window.FindName('overPill')
         if ($over) {
-            $bar.Background = New-Object System.Windows.Media.LinearGradientBrush
-            $bar.Background.StartPoint = [System.Windows.Point]::new(0,0)
-            $bar.Background.EndPoint   = [System.Windows.Point]::new(1,0)
-            $s1 = New-Object System.Windows.Media.GradientStop; $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString('#991B1B'); $s1.Offset = 0
-            $s2 = New-Object System.Windows.Media.GradientStop; $s2.Color = [System.Windows.Media.ColorConverter]::ConvertFromString('#F87171'); $s2.Offset = 1
-            [void]$bar.Background.GradientStops.Add($s1); [void]$bar.Background.GradientStops.Add($s2)
-            $script:window.FindName('reqPct').Foreground  = NewBrush '#F87171'
-            $script:window.FindName('reqPct').Text        = 'OVER'
-            $script:window.FindName('reqSub').Text        = 'limit exceeded'
-            $script:window.FindName('reqSub').Foreground  = NewBrush '#7F1D1D'
+            # Amber bar — going over is expected, informational not alarming
+            $bar.Background = New-GradBrush '#78350F' '#FBBF24'
+            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
         } else {
-            $script:window.FindName('reqPct').Foreground = NewBrush (if ($pct -ge 90) { '#F87171' } elseif ($pct -ge 75) { '#FBBF24' } else { '#F1F5F9' })
-            $script:window.FindName('reqPct').Text = ('{0}%' -f $pct)
-            $script:window.FindName('reqSub').Text       = 'used'
-            $script:window.FindName('reqSub').Foreground = NewBrush '#0D3D2F'
+            # Restore theme bar color
+            $t = $script:Themes[$script:Cfg.Theme]
+            if ($t) { $bar.Background = New-GradBrush $t.BarC1 $t.BarC2 }
+            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         }
 
         $script:window.FindName('reqCount').Text = "$used / $limit"
@@ -496,9 +593,10 @@ function Update-UI {
             $script:notify.Text = "Cursor  $used/$limit requests used"
         }
     } else {
-        $script:window.FindName('reqPct').Text   = '--'
         $script:window.FindName('reqBar').Width  = 0
         $script:window.FindName('reqCount').Text = '-- / --'
+        $pill = $script:window.FindName('overPill')
+        if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         $time.Text = if ($script:ErrMsg) { $script:ErrMsg } else { 'connecting...' }
     }
 
@@ -538,6 +636,13 @@ function Apply-CursorTheme([string]$name) {
     $t = $script:Themes[$name]
     if (-not $t) { $t = $script:Themes['Cursor Green'] }
 
+    # Main panel background and border
+    $mb = $script:window.FindName('mainBorder')
+    if ($mb -and $t.BgC1) {
+        $mb.Background = New-DiagGradBrush $t.BgC1 $t.BgC2
+        $mb.BorderBrush = NewBrush $t.BorderC1
+    }
+
     # Bar gradient and track
     $rb = $script:window.FindName('reqBar')
     if ($rb) { $rb.Background = New-GradBrush $t.BarC1 $t.BarC2 }
@@ -567,6 +672,17 @@ function Apply-CursorTheme([string]$name) {
     # On-demand color
     $od = $script:window.FindName('onDemandText')
     if ($od) { $od.Foreground = NewBrush $t.OnDemandFg }
+
+    # GSS footer label
+    $gss = $script:window.FindName('gssLabel')
+    if ($gss -and $t.GssLabelFg) { $gss.Foreground = NewBrush $t.GssLabelFg }
+
+    # GSS path color: GSS Green always, but brighter in Global Shop theme
+    $gp = $script:window.FindName('gssPath')
+    if ($gp) {
+        $gssGreen = if ($name -eq 'Global Shop') { '#3DC95A' } else { '#2D9F48' }
+        $gp.Fill = NewBrush $gssGreen
+    }
 
     # Accent stripe
     $stripe = $script:window.FindName('accentStripe')
