@@ -31,6 +31,7 @@ try { $v = (& claude --version) 2>$null; if ($v -match '(\d+\.\d+\.\d+)') { $scr
 # ---------------------------------------------------------------------------
 $script:Themes = [ordered]@{
     'Deep Space' = @{
+        BgC1 = '#0F172A'; BgC2 = '#080C18'; BorderC1 = '#1E3A5F'; GssLabelFg = '#5C8AAA'
         FivehColors = '#0369A1','#38BDF8'
         WeekColors  = '#C2410C','#FB923C'
         SonColors   = '#6D28D9','#C084FC'
@@ -41,7 +42,20 @@ $script:Themes = [ordered]@{
         OpusFg      = '#FDE047'
         Stripe      = '#38BDF8','#818CF8','#E879F9','#FB923C'
     }
+    'Global Shop' = @{
+        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'; GssLabelFg = '#3DC95A'
+        FivehColors = '#1A5C2A','#2D9F48'
+        WeekColors  = '#1A5C2A','#4AE068'
+        SonColors   = '#166534','#86EFAC'
+        OpusColors  = '#92400E','#FDE047'
+        FivehFg     = '#2D9F48'
+        WeekFg      = '#4AE068'
+        SonFg       = '#86EFAC'
+        OpusFg      = '#FDE047'
+        Stripe      = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
+    }
     'Ocean' = @{
+        BgC1 = '#0F1F2E'; BgC2 = '#091420'; BorderC1 = '#1A4060'; GssLabelFg = '#5C8AAA'
         FivehColors = '#0F766E','#2DD4BF'
         WeekColors  = '#9D174D','#FB7185'
         SonColors   = '#1E40AF','#93C5FD'
@@ -52,18 +66,8 @@ $script:Themes = [ordered]@{
         OpusFg      = '#FCD34D'
         Stripe      = '#2DD4BF','#93C5FD','#FB7185','#FCD34D'
     }
-    'Neon' = @{
-        FivehColors = '#BE185D','#F472B6'
-        WeekColors  = '#15803D','#4ADE80'
-        SonColors   = '#1D4ED8','#60A5FA'
-        OpusColors  = '#B45309','#FDE047'
-        FivehFg     = '#F472B6'
-        WeekFg      = '#4ADE80'
-        SonFg       = '#60A5FA'
-        OpusFg      = '#FDE047'
-        Stripe      = '#F472B6','#4ADE80','#60A5FA','#FDE047'
-    }
     'Mono' = @{
+        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'; GssLabelFg = '#909090'
         FivehColors = '#1E3A5F','#94A3B8'
         WeekColors  = '#1E3A5F','#94A3B8'
         SonColors   = '#1E3A5F','#94A3B8'
