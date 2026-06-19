@@ -1,26 +1,16 @@
 # Ui.ps1 — XAML window definition, theme application, bar rendering, sparkline, and UI update loop
 
 # ---------------------------------------------------------------------------
-# XAML — AllowsTransparency removed; window Background matches panel so the
-# rounded-corner areas show solid colour instead of bleeding through to other
-# windows behind the overlay.
+# XAML
 # ---------------------------------------------------------------------------
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Claude Usage" WindowStyle="None" AllowsTransparency="False"
-        Background="#0F172A" Topmost="True" ShowInTaskbar="False"
+        Title="Claude Usage" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="Manual">
   <Window.Resources>
-    <LinearGradientBrush x:Key="PanelBg" StartPoint="0,0" EndPoint="0.7,1">
-      <GradientStop Color="#0F172A" Offset="0"/>
-      <GradientStop Color="#0B1220" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="PanelBorder" StartPoint="0,0" EndPoint="1,1">
-      <GradientStop Color="#1E3A5F" Offset="0"/>
-      <GradientStop Color="#0F172A" Offset="1"/>
-    </LinearGradientBrush>
     <LinearGradientBrush x:Key="Divider" StartPoint="0,0" EndPoint="1,0">
       <GradientStop Color="Transparent" Offset="0"/>
       <GradientStop Color="#38BDF828" Offset="0.25"/>
@@ -29,12 +19,24 @@ $xaml = @'
     </LinearGradientBrush>
   </Window.Resources>
 
-  <Border Background="{StaticResource PanelBg}" BorderBrush="{StaticResource PanelBorder}"
-          BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+  <Grid Margin="12">
+  <Border x:Name="mainBorder" BorderThickness="1" CornerRadius="16" ClipToBounds="True">
+    <Border.Effect>
+      <DropShadowEffect Color="#000000" BlurRadius="16" Opacity="0.5" ShadowDepth="0"/>
+    </Border.Effect>
+    <Border.Background>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="0.7,1">
+        <GradientStop Color="#FF0F172A" Offset="0"/>
+        <GradientStop Color="#FF0B1220" Offset="1"/>
+      </LinearGradientBrush>
+    </Border.Background>
+    <Border.BorderBrush>
+      <SolidColorBrush Color="#FF1E3A5F"/>
+    </Border.BorderBrush>
     <DockPanel>
 
-      <!-- Rainbow accent stripe — named so theme changes can update it -->
-      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="3">
+      <!-- Rainbow accent stripe — CornerRadius matches outer border (16-1=15) -->
+      <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="5" CornerRadius="15,15,0,0">
         <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#38BDF8" Offset="0"/>
@@ -54,13 +56,13 @@ $xaml = @'
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Ellipse x:Name="statusDot" Width="6" Height="6" Fill="#4ADE80"
+            <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="#4ADE80"
                      VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBlock Foreground="#6B8FAF" FontSize="10" FontFamily="Bahnschrift SemiBold" Text="CLAUDE "/>
-            <TextBlock Foreground="#E2E8F0" FontSize="10" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
+            <TextBlock Foreground="#6B8FAF" FontSize="12" FontFamily="Bahnschrift SemiBold" Text="CLAUDE "/>
+            <TextBlock Foreground="#E2E8F0" FontSize="12" FontFamily="Bahnschrift SemiBold" Text="USAGE"/>
           </StackPanel>
           <TextBlock x:Name="timeText" Grid.Column="1" Text=""
-                     Foreground="#4B6A8A" FontSize="10" FontFamily="Consolas" VerticalAlignment="Center"/>
+                     Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
         <!-- 5h metric — bar = remaining capacity -->
@@ -73,12 +75,12 @@ $xaml = @'
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom">
               <TextBlock x:Name="fivehLabel" Text="5-HOUR SESSION"
-                         Foreground="#38BDF8" FontSize="8" FontFamily="Bahnschrift SemiBold"/>
+                         Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold"/>
             </StackPanel>
             <TextBlock Grid.Column="1" x:Name="fivehPct" Text="--" Foreground="#F1F5F9"
                        FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
             <TextBlock Grid.Column="2" x:Name="fivehReset" Text=""
-                       Foreground="#5B8AA8" FontSize="9" FontFamily="Consolas"
+                       Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas"
                        VerticalAlignment="Bottom" Margin="0,0,0,2"/>
           </Grid>
           <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
@@ -91,8 +93,8 @@ $xaml = @'
               </Border.Background>
             </Border>
           </Border>
-          <TextBlock x:Name="fivehSub" Text="used" Foreground="#2D4A66"
-                     FontSize="7" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+          <TextBlock x:Name="fivehSub" Text="used" Foreground="#5C7A96"
+                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
         </StackPanel>
 
         <!-- Weekly metric -->
@@ -108,7 +110,7 @@ $xaml = @'
             <TextBlock Grid.Column="1" x:Name="weekPct" Text="--" Foreground="#F1F5F9"
                        FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
             <TextBlock Grid.Column="2" x:Name="weekReset" Text=""
-                       Foreground="#5B8AA8" FontSize="9" FontFamily="Consolas"
+                       Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas"
                        VerticalAlignment="Bottom" Margin="0,0,0,2"/>
           </Grid>
           <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
@@ -121,8 +123,8 @@ $xaml = @'
               </Border.Background>
             </Border>
           </Border>
-          <TextBlock x:Name="weekSub" Text="used" Foreground="#2D4A66"
-                     FontSize="7" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+          <TextBlock x:Name="weekSub" Text="used" Foreground="#5C7A96"
+                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
         </StackPanel>
 
         <!-- Sonnet metric -->
@@ -138,7 +140,7 @@ $xaml = @'
             <TextBlock Grid.Column="1" x:Name="sonPct" Text="--" Foreground="#F1F5F9"
                        FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
             <TextBlock Grid.Column="2" x:Name="sonReset" Text=""
-                       Foreground="#5B8AA8" FontSize="9" FontFamily="Consolas"
+                       Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas"
                        VerticalAlignment="Bottom" Margin="0,0,0,2"/>
           </Grid>
           <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
@@ -151,8 +153,8 @@ $xaml = @'
               </Border.Background>
             </Border>
           </Border>
-          <TextBlock x:Name="sonSub" Text="used" Foreground="#2D4A66"
-                     FontSize="7" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+          <TextBlock x:Name="sonSub" Text="used" Foreground="#5C7A96"
+                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
         </StackPanel>
 
         <!-- Opus metric (collapsed unless used) -->
@@ -168,7 +170,7 @@ $xaml = @'
             <TextBlock Grid.Column="1" x:Name="opusPct" Text="--" Foreground="#F1F5F9"
                        FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
             <TextBlock Grid.Column="2" x:Name="opusReset" Text=""
-                       Foreground="#5B8AA8" FontSize="9" FontFamily="Consolas"
+                       Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas"
                        VerticalAlignment="Bottom" Margin="0,0,0,2"/>
           </Grid>
           <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
@@ -181,8 +183,8 @@ $xaml = @'
               </Border.Background>
             </Border>
           </Border>
-          <TextBlock x:Name="opusSub" Text="used" Foreground="#2D4A66"
-                     FontSize="7" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+          <TextBlock x:Name="opusSub" Text="used" Foreground="#5C7A96"
+                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
         </StackPanel>
 
         <!-- Sparkline history graphs (collapsed unless ShowGraph is enabled) -->
@@ -201,44 +203,66 @@ $xaml = @'
         <!-- Stats -->
         <StackPanel x:Name="statsPanel">
           <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#5A8AAA"
-                       FontSize="9" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
                        ToolTip="API-equivalent value of all usage (not a real charge on flat-rate plans)"/>
             <TextBlock Grid.Column="1" x:Name="valText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
           </Grid>
           <Grid x:Name="extraRow" Margin="0,0,0,2" Visibility="Collapsed">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="OVERAGE" Foreground="#5A8AAA"
-                       FontSize="9" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="OVERAGE" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
                        ToolTip="Real spend beyond your plan this month"/>
             <TextBlock Grid.Column="1" x:Name="extraVal" Text="" Foreground="#FBB740" FontSize="11" FontFamily="Consolas"/>
           </Grid>
           <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#5A8AAA"
-                       FontSize="9" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
                        ToolTip="All-time input / output tokens"/>
-            <TextBlock Grid.Column="1" x:Name="tokText" Text="--" Foreground="#64748B" FontSize="11" FontFamily="Consolas"/>
+            <TextBlock Grid.Column="1" x:Name="tokText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
           </Grid>
           <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="TODAY" Foreground="#5A8AAA"
-                       FontSize="9" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="TODAY" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
                        ToolTip="Today's tokens and messages (refreshed by Claude Code periodically)"/>
-            <TextBlock Grid.Column="1" x:Name="todayText" Text="--" Foreground="#64748B" FontSize="11" FontFamily="Consolas"/>
+            <TextBlock Grid.Column="1" x:Name="todayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
           </Grid>
           <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="LIFETIME" Foreground="#5A8AAA"
-                       FontSize="9" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-            <TextBlock Grid.Column="1" x:Name="lifeText" Text="--" Foreground="#64748B" FontSize="11" FontFamily="Consolas"/>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="LIFETIME" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" x:Name="lifeText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
           </Grid>
         </StackPanel>
+
+        <!-- Footer divider -->
+        <Border Height="1" Background="{StaticResource Divider}" Margin="0,6,0,8"/>
+
+        <!-- GSS Footer branding -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
+            <Canvas Width="300" Height="296">
+              <Path x:Name="gssPath" Fill="#2D9F48"
+                    Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+            </Canvas>
+          </Viewbox>
+          <TextBlock x:Name="gssLabel" Grid.Column="1"
+                     Text="Global Shop Solutions"
+                     Foreground="#5C8AAA" FontSize="10" FontFamily="Bahnschrift SemiBold"
+                     VerticalAlignment="Center"/>
+        </Grid>
 
       </StackPanel>
     </DockPanel>
   </Border>
+  </Grid>
 </Window>
 '@
 
@@ -251,6 +275,23 @@ $xaml = @'
 function Apply-Theme([string]$name) {
     $t = $script:Themes[$name]
     if (-not $t) { return }
+
+    # Main panel background and border
+    $mb = $script:window.FindName('mainBorder')
+    if ($mb -and $t.BgC1) {
+        $bgb = New-GradientBrush2 $t.BgC1 $t.BgC2
+        $mb.Background  = $bgb
+        $mb.BorderBrush = NewBrush $t.BorderC1
+    }
+
+    # GSS footer
+    $gss = $script:window.FindName('gssLabel')
+    if ($gss -and $t.GssLabelFg) { $gss.Foreground = NewBrush $t.GssLabelFg }
+    $gp = $script:window.FindName('gssPath')
+    if ($gp) {
+        $gssGreen = if ($name -eq 'Global Shop') { '#3DC95A' } else { '#2D9F48' }
+        $gp.Fill = NewBrush $gssGreen
+    }
 
     $bars   = @('fivehBar','weekBar','sonBar','opusBar')
     $labels = @('fivehLabel','weekLabel','sonLabel','opusLabel')

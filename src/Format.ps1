@@ -19,6 +19,18 @@ function New-GradientBrush([string]$c1, [string]$c2) {
     return $b
 }
 
+function New-GradientBrush2([string]$c1, [string]$c2) {
+    $b = New-Object System.Windows.Media.LinearGradientBrush
+    $b.StartPoint = [System.Windows.Point]::new(0,0)
+    $b.EndPoint   = [System.Windows.Point]::new(0.7,1)
+    $s1 = New-Object System.Windows.Media.GradientStop
+    $s1.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c1); $s1.Offset = 0
+    $s2 = New-Object System.Windows.Media.GradientStop
+    $s2.Color = [System.Windows.Media.ColorConverter]::ConvertFromString($c2); $s2.Offset = 1
+    [void]$b.GradientStops.Add($s1); [void]$b.GradientStops.Add($s2)
+    return $b
+}
+
 function Format-Reset([string]$iso) {
     if (-not $iso) { return '' }
     try {

@@ -21,6 +21,7 @@ $script:AppDir    = $PSScriptRoot
 $script:StatePath = Join-Path $script:AppDir 'overlay-state.json'
 $script:VbsPath   = Join-Path $script:AppDir 'Start-Overlay.vbs'
 $script:ErrLog    = Join-Path $script:AppDir 'overlay-error.log'
+$script:PidPath   = Join-Path $script:AppDir 'overlay.pid'
 $script:LnkPath   = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClaudeUsageOverlay.lnk'
 $script:CredPath  = Join-Path $env:USERPROFILE '.claude\.credentials.json'
 
@@ -62,6 +63,8 @@ try {
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
                        System.Windows.Forms, System.Drawing, System.Xaml
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ---------------------------------------------------------------------------
 # Load modules (dot-sourced into this scope)
@@ -109,10 +112,15 @@ $script:tickTimer.add_Tick({ Update-UI })
 $script:pollTimer.Start()
 $script:tickTimer.Start()
 
+# Write PID file so Uninstall.bat can terminate the process
+try { [System.IO.File]::WriteAllText($script:PidPath, "$PID") } catch { }
+
 # Always show unless the user has explicitly chosen "Start hidden"
 if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { $script:window.Show() }
 
 [System.Windows.Threading.Dispatcher]::Run()
+
+try { Remove-Item $script:PidPath -ErrorAction SilentlyContinue } catch { }
 
 }
 catch {
