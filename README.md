@@ -2,6 +2,8 @@
 
 Always-on-top Windows HUD for Cursor IDE usage. Shows live request counts and on-demand spend from your Cursor account.
 
+![Cursor overlay](docs/preview.png)
+
 ## What It Shows
 
 - **Included requests** — used / limit with OVER alert when exceeded, reset countdown
