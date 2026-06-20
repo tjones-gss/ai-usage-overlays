@@ -20,19 +20,26 @@ Always-on-top Windows HUDs that show live usage stats for Claude Code and Cursor
 **Cursor IDE**
 - On-demand spend (hero), included requests with OVER detection, agent edits, top model, sessions
 
+## Install
+
+**One-liner** — paste this into PowerShell, or hand it to your Claude / Cursor agent:
+
+```powershell
+irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex
+```
+
+That's it. No git, no Python, no admin rights. Downloads, installs, and launches both overlays automatically.
+
+**Let your AI agent do it** — paste this into Claude Code or Cursor chat:
+> Run this in PowerShell to install the AI usage overlays: `irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex`
+
+**Manual install** — clone the repo and run `Install.bat`.
+
 ## Requirements
 
 - Windows 10/11 (PowerShell is built in — no separate install needed)
 - Claude Code CLI signed in (`claude auth login`)
 - Cursor IDE signed in
-
-## Install
-
-```bat
-Install.bat
-```
-
-Registers a single login startup entry (`AIUsageOverlay.lnk`) and launches both panels immediately. Each overlay installs to its own `%LOCALAPPDATA%` folder.
 
 ## Usage
 
