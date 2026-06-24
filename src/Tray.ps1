@@ -38,7 +38,8 @@ $script:opacityItems = @{}
 # Resolve already-loaded assembly paths so Add-Type can find them under .NET 6+
 $_sdPath  = [System.Drawing.Color].Assembly.Location
 $_swfPath = [System.Windows.Forms.Form].Assembly.Location
-Add-Type -ReferencedAssemblies $_sdPath, $_swfPath -TypeDefinition @'
+$_gfxPath = [System.Drawing.Graphics].Assembly.Location   # Graphics/SolidBrush/Pen live in a separate assembly from Color
+Add-Type -ReferencedAssemblies $_sdPath, $_swfPath, $_gfxPath -TypeDefinition @'
 using System.Drawing;
 using System.Windows.Forms;
 public class DarkColorTable : ProfessionalColorTable {
@@ -62,6 +63,20 @@ public class DarkColorTable : ProfessionalColorTable {
 }
 public class DarkMenuRenderer : ToolStripProfessionalRenderer {
     public DarkMenuRenderer() : base(new DarkColorTable()) { RoundedEdges = false; }
+    // ToolStripProfessionalRenderer ignores the color table's MenuItemSelected for the
+    // selected fill when visual styles are on — it draws a light system highlight, which
+    // renders our light-grey item text unreadable. Paint the fill ourselves so the
+    // highlight stays dark and the text remains legible.
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
+        Graphics g = e.Graphics;
+        Rectangle bounds = new Rectangle(Point.Empty, e.Item.Size);
+        if (e.Item.Selected || e.Item.Pressed) {
+            using (var b = new SolidBrush(Color.FromArgb(30,  58, 95)))  g.FillRectangle(b, bounds);
+            using (var p = new Pen(Color.FromArgb(56, 130, 180)))        g.DrawRectangle(p, 0, 0, bounds.Width - 1, bounds.Height - 1);
+        } else {
+            using (var b = new SolidBrush(Color.FromArgb(13, 20, 40)))   g.FillRectangle(b, bounds);
+        }
+    }
 }
 '@
 
@@ -79,7 +94,11 @@ function New-StripItem([string]$text, [scriptblock]$onClick) {
 }
 
 $script:ctxStrip = New-Object System.Windows.Forms.ContextMenuStrip
-$script:ctxStrip.Renderer  = New-Object DarkMenuRenderer
+$script:darkRenderer = New-Object DarkMenuRenderer
+$script:ctxStrip.Renderer  = $script:darkRenderer
+# Submenu dropdowns render via the global manager renderer, not the strip's own,
+# so set it too — otherwise nested menu items keep the unreadable light highlight.
+[System.Windows.Forms.ToolStripManager]::Renderer = $script:darkRenderer
 $script:ctxStrip.BackColor = $darkBg
 $script:ctxStrip.ForeColor = $darkFg
 $script:ctxStrip.Font      = $menuFont
