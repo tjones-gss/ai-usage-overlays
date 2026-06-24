@@ -151,7 +151,7 @@ function Check-Alert([string]$key, $util) {
 # ── Actions ───────────────────────────────────────────────────────────────
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now'             { Get-Usage; Get-Stats; Update-UI }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage'    { Start-Process 'https://claude.ai/settings/limits' }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage'    { Start-Process 'https://claude.ai/new#settings/usage' }))
 Add-Separator
 
 # ── Snap to corner ────────────────────────────────────────────────────────

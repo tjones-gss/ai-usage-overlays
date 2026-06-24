@@ -28,8 +28,29 @@ function Apply-Settings {
     Apply-Theme $script:Cfg.Theme
 }
 
+# Work area (in WPF device-independent units) of the monitor the window is
+# currently on — NOT the primary monitor. SystemParameters.WorkArea is always
+# the primary; on multi-monitor setups we resolve the window's own monitor via
+# its HWND and convert the screen's pixel rect through the window's DPI transform.
+function Get-WorkArea {
+    $src = [System.Windows.PresentationSource]::FromVisual($script:window)
+    if ($null -eq $src) {
+        $wa = [System.Windows.SystemParameters]::WorkArea
+        return @{ Left = $wa.Left; Top = $wa.Top; Right = $wa.Right; Bottom = $wa.Bottom }
+    }
+    $fromDev = $src.CompositionTarget.TransformFromDevice   # device px -> DIU
+    $hwnd    = (New-Object System.Windows.Interop.WindowInteropHelper $script:window).Handle
+    $wa      = ([System.Windows.Forms.Screen]::FromHandle($hwnd)).WorkingArea
+    return @{
+        Left   = $wa.Left   * $fromDev.M11
+        Top    = $wa.Top    * $fromDev.M22
+        Right  = $wa.Right  * $fromDev.M11
+        Bottom = $wa.Bottom * $fromDev.M22
+    }
+}
+
 function Clamp-Position {
-    $wa = [System.Windows.SystemParameters]::WorkArea
+    $wa = Get-WorkArea
     $w  = $script:window.ActualWidth
     $h  = $script:window.ActualHeight
     $script:window.Left = [math]::Max($wa.Left, [math]::Min($script:window.Left, $wa.Right  - $w))
@@ -37,7 +58,7 @@ function Clamp-Position {
 }
 
 function Snap-ToCorner([string]$corner) {
-    $wa = [System.Windows.SystemParameters]::WorkArea
+    $wa = Get-WorkArea
     $w  = $script:window.ActualWidth;  $h = $script:window.ActualHeight
     switch ($corner) {
         'TR' { $script:window.Left = $wa.Right - $w - 16; $script:window.Top = $wa.Top    + 16 }
