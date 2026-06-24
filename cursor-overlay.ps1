@@ -85,6 +85,7 @@ $PID | Set-Content $script:PidPath
 $script:LiveData      = $null
 $script:LocalData     = $null
 $script:SummaryData   = $null
+$script:OnDemandCents = $null
 $script:AuthState     = 'init'
 $script:LastFetch     = ''
 $script:PendingOpacity = $null   # applied on WPF thread by DispatcherTimer
@@ -172,9 +173,9 @@ function Format-Reset([string]$isoDate) {
         try { $reset = [System.DateTimeOffset]::new($start.Year, $start.Month + 1, $start.Day, $start.Hour, $start.Minute, $start.Second, $start.Offset) } catch { }
         $span  = $reset - [System.DateTimeOffset]::Now
         if ($span.TotalSeconds -le 0) { return 'now' }
-        if ($span.TotalDays -ge 1)    { return ('↺ {0}d {1}h' -f [int]$span.TotalDays, $span.Hours) }
-        if ($span.TotalHours -ge 1)   { return ('↺ {0}h{1:00}m' -f [int]$span.TotalHours, $span.Minutes) }
-        return ('↺ {0}m' -f [int]$span.TotalMinutes)
+        if ($span.TotalDays -ge 1)    { return ('in {0}d {1}h' -f [int]$span.TotalDays, $span.Hours) }
+        if ($span.TotalHours -ge 1)   { return ('in {0}h{1:00}m' -f [int]$span.TotalHours, $span.Minutes) }
+        return ('in {0}m' -f [int]$span.TotalMinutes)
     } catch { return '' }
 }
 
@@ -227,7 +228,11 @@ function Get-CursorToken {
                 $pad = $b64.Length % 4
                 if ($pad -ne 0) { $b64 += '=' * (4 - $pad) }
                 $payload = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)) | ConvertFrom-Json
-                if ($payload.sub) { $userId = $payload.sub }
+                if ($payload.sub) {
+                    # sub is auth0|user_xxx — cookie/API expect the user_xxx portion
+                    $userId = $payload.sub
+                    if ($userId -match '\|') { $userId = ($userId -split '\|')[-1] }
+                }
             }
         } catch { }
     }
@@ -240,16 +245,16 @@ function Get-CursorToken {
 # ---------------------------------------------------------------------------
 function Get-CursorUsage {
     $tok, $userId, $email = Get-CursorToken
-    if (-not $tok -or -not $userId) {
+    if (-not $tok) {
         $script:AuthState = 'notoken'; $script:ErrMsg = 'Cannot read Cursor token from state.vscdb'
         return
     }
 
-    $cookie = "WorkosCursorSessionToken=$([Uri]::EscapeDataString($userId + '::' + $tok))"
+    # IDE access tokens authenticate against api2.cursor.sh, not cursor.com dashboard cookies
+    $bearer = @{ Authorization = "Bearer $tok" }
 
     try {
-        $r = Invoke-RestMethod "https://cursor.com/api/usage?user=$([Uri]::EscapeDataString($userId))" `
-            -Headers @{ Cookie = $cookie } -TimeoutSec 20
+        $r = Invoke-RestMethod 'https://api2.cursor.sh/auth/usage' -Headers $bearer -TimeoutSec 20
         $script:LiveData  = $r
         $script:AuthState = 'ok'
         $script:ErrMsg    = ''
@@ -261,11 +266,46 @@ function Get-CursorUsage {
         else                { $script:AuthState = 'stale'; $script:ErrMsg = $_.Exception.Message }
     }
 
-    # Also fetch usage-summary for on-demand spend
+    # On-demand spend: sum chargedCents of usage-based events since billing-cycle start.
+    # (api2 DashboardService accepts the same bearer token; GetCurrentPeriodUsage is empty
+    #  for team accounts, so we derive the figure from the usage-event log instead.)
     try {
-        $script:SummaryData = Invoke-RestMethod 'https://cursor.com/api/usage-summary' `
-            -Headers @{ Cookie = $cookie; Authorization = "Bearer $tok" } -TimeoutSec 20
+        $cycleStartMs = $null
+        if ($script:LiveData -and $script:LiveData.startOfMonth) {
+            $cycleStartMs = [System.DateTimeOffset]::Parse([string]$script:LiveData.startOfMonth).ToUnixTimeMilliseconds()
+        }
+        if ($null -ne $cycleStartMs) {
+            $script:OnDemandCents = Get-CursorOnDemandCents $tok $cycleStartMs
+        }
     } catch { }
+}
+
+# Sums usage-based (on-demand) charges in cents for the current billing cycle.
+function Get-CursorOnDemandCents([string]$tok, [long]$cycleStartMs) {
+    $headers = @{
+        Authorization              = "Bearer $tok"
+        'Connect-Protocol-Version' = '1'
+        'Content-Type'             = 'application/json'
+    }
+    $nowMs    = [System.DateTimeOffset]::Now.ToUnixTimeMilliseconds()
+    $page     = 1
+    $pageSize = 200
+    $cents    = 0.0
+    while ($page -le 50) {
+        $body = "{`"startDate`":`"$cycleStartMs`",`"endDate`":`"$nowMs`",`"page`":$page,`"pageSize`":$pageSize}"
+        $res = Invoke-RestMethod 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents' `
+            -Method POST -Headers $headers -Body $body -TimeoutSec 30
+        $events = $res.usageEventsDisplay
+        if (-not $events -or $events.Count -eq 0) { break }
+        foreach ($e in $events) {
+            if ($e.kind -eq 'USAGE_EVENT_KIND_USAGE_BASED' -and $null -ne $e.chargedCents) {
+                $cents += [double]$e.chargedCents
+            }
+        }
+        if ($events.Count -lt $pageSize) { break }
+        $page++
+    }
+    return $cents
 }
 
 # ---------------------------------------------------------------------------
@@ -600,7 +640,8 @@ function Update-UI {
         $time.Text = $script:LastFetch
     }
 
-    # On-demand spend from usage-summary
+    # Spend is only returned for some plans. Enterprise request-based accounts
+    # fall back to showing how far over the included request limit they are.
     $od = $script:window.FindName('onDemandText')
     if ($od) {
         if ($script:AuthState -eq 'auth' -or $script:AuthState -eq 'notoken') {
@@ -610,10 +651,8 @@ function Update-UI {
             $od.Foreground = NewBrush '#F87171'
         } else {
             $od.FontSize = 30
-            $sum = $script:SummaryData
-            if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
-                $cents = [double]$sum.individualUsage.onDemand.used
-                $dollars = $cents / 100.0
+            if ($null -ne $script:OnDemandCents) {
+                $dollars = [double]$script:OnDemandCents / 100.0
                 $od.Text = ('${0:N2}' -f $dollars)
                 $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
             } else {
