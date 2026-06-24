@@ -36,9 +36,9 @@ function Format-Reset([string]$iso) {
     try {
         $span = [System.DateTimeOffset]::Parse($iso) - [System.DateTimeOffset]::Now
         if ($span.TotalSeconds -le 0) { return 'now' }
-        if ($span.TotalDays  -ge 1)   { return ('↺ {0}d {1}h'   -f [int]$span.TotalDays, $span.Hours) }
-        if ($span.TotalHours -ge 1)   { return ('↺ {0}h{1:00}m' -f [int]$span.TotalHours, $span.Minutes) }
-        return ('↺ {0}m' -f [int]$span.TotalMinutes)
+        if ($span.TotalDays  -ge 1)   { return ('in {0}d {1}h'   -f [int]$span.TotalDays, $span.Hours) }
+        if ($span.TotalHours -ge 1)   { return ('in {0}h{1:00}m' -f [int]$span.TotalHours, $span.Minutes) }
+        return ('in {0}m' -f [int]$span.TotalMinutes)
     } catch { return '' }
 }
 
