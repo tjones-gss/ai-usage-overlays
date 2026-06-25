@@ -77,6 +77,23 @@ public class DarkMenuRenderer : ToolStripProfessionalRenderer {
             using (var b = new SolidBrush(Color.FromArgb(13, 20, 40)))   g.FillRectangle(b, bounds);
         }
     }
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e) {
+        Graphics g = e.Graphics;
+        Rectangle r = e.ImageRectangle;
+        if (r.IsEmpty) return;
+        using (var b = new SolidBrush(Color.FromArgb(30, 58, 95)))
+            g.FillRectangle(b, r);
+        var prevMode = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using (var pen = new Pen(Color.FromArgb(147, 197, 253), 1.5f)) {
+            int x1 = r.Left + 3,            y1 = r.Top + r.Height / 2;
+            int x2 = r.Left + r.Width/2 - 1, y2 = r.Bottom - 4;
+            int x3 = r.Right - 3,           y3 = r.Top + 4;
+            g.DrawLine(pen, x1, y1, x2, y2);
+            g.DrawLine(pen, x2, y2, x3, y3);
+        }
+        g.SmoothingMode = prevMode;
+    }
 }
 '@
 
@@ -102,7 +119,7 @@ $script:ctxStrip.Renderer  = $script:darkRenderer
 $script:ctxStrip.BackColor = $darkBg
 $script:ctxStrip.ForeColor = $darkFg
 $script:ctxStrip.Font      = $menuFont
-$script:ctxStrip.ShowImageMargin = $false
+$script:ctxStrip.ShowImageMargin = $true
 
 function Add-Separator {
     $sep = New-Object System.Windows.Forms.ToolStripSeparator
