@@ -36,9 +36,10 @@ function Format-Reset([string]$iso) {
     try {
         $span = [System.DateTimeOffset]::Parse($iso) - [System.DateTimeOffset]::Now
         if ($span.TotalSeconds -le 0) { return 'now' }
-        if ($span.TotalDays  -ge 1)   { return ('↺ {0}d {1}h'   -f [int]$span.TotalDays, $span.Hours) }
-        if ($span.TotalHours -ge 1)   { return ('↺ {0}h{1:00}m' -f [int]$span.TotalHours, $span.Minutes) }
-        return ('↺ {0}m' -f [int]$span.TotalMinutes)
+        # [math]::Floor — [int] rounds (banker's), which would tick the hours/days up a unit
+        if ($span.TotalDays  -ge 1)   { return ('↺ {0}d {1}h'   -f [int][math]::Floor($span.TotalDays), $span.Hours) }
+        if ($span.TotalHours -ge 1)   { return ('↺ {0}h{1:00}m' -f [int][math]::Floor($span.TotalHours), $span.Minutes) }
+        return ('↺ {0}m' -f [int][math]::Floor($span.TotalMinutes))
     } catch { return '' }
 }
 

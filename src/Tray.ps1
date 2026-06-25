@@ -38,7 +38,8 @@ $script:opacityItems = @{}
 # Resolve already-loaded assembly paths so Add-Type can find them under .NET 6+
 $_sdPath  = [System.Drawing.Color].Assembly.Location
 $_swfPath = [System.Windows.Forms.Form].Assembly.Location
-Add-Type -ReferencedAssemblies $_sdPath, $_swfPath -TypeDefinition @'
+$_gfxPath = [System.Drawing.Graphics].Assembly.Location   # Graphics/SolidBrush/Pen live in a separate assembly from Color
+Add-Type -ReferencedAssemblies $_sdPath, $_swfPath, $_gfxPath -TypeDefinition @'
 using System.Drawing;
 using System.Windows.Forms;
 public class DarkColorTable : ProfessionalColorTable {
@@ -62,6 +63,37 @@ public class DarkColorTable : ProfessionalColorTable {
 }
 public class DarkMenuRenderer : ToolStripProfessionalRenderer {
     public DarkMenuRenderer() : base(new DarkColorTable()) { RoundedEdges = false; }
+    // ToolStripProfessionalRenderer ignores the color table's MenuItemSelected for the
+    // selected fill when visual styles are on — it draws a light system highlight, which
+    // renders our light-grey item text unreadable. Paint the fill ourselves so the
+    // highlight stays dark and the text remains legible.
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
+        Graphics g = e.Graphics;
+        Rectangle bounds = new Rectangle(Point.Empty, e.Item.Size);
+        if (e.Item.Selected || e.Item.Pressed) {
+            using (var b = new SolidBrush(Color.FromArgb(30,  58, 95)))  g.FillRectangle(b, bounds);
+            using (var p = new Pen(Color.FromArgb(56, 130, 180)))        g.DrawRectangle(p, 0, 0, bounds.Width - 1, bounds.Height - 1);
+        } else {
+            using (var b = new SolidBrush(Color.FromArgb(13, 20, 40)))   g.FillRectangle(b, bounds);
+        }
+    }
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e) {
+        Graphics g = e.Graphics;
+        Rectangle r = e.ImageRectangle;
+        if (r.IsEmpty) return;
+        using (var b = new SolidBrush(Color.FromArgb(30, 58, 95)))
+            g.FillRectangle(b, r);
+        var prevMode = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using (var pen = new Pen(Color.FromArgb(147, 197, 253), 1.5f)) {
+            int x1 = r.Left + 3,            y1 = r.Top + r.Height / 2;
+            int x2 = r.Left + r.Width/2 - 1, y2 = r.Bottom - 4;
+            int x3 = r.Right - 3,           y3 = r.Top + 4;
+            g.DrawLine(pen, x1, y1, x2, y2);
+            g.DrawLine(pen, x2, y2, x3, y3);
+        }
+        g.SmoothingMode = prevMode;
+    }
 }
 '@
 
@@ -79,11 +111,15 @@ function New-StripItem([string]$text, [scriptblock]$onClick) {
 }
 
 $script:ctxStrip = New-Object System.Windows.Forms.ContextMenuStrip
-$script:ctxStrip.Renderer  = New-Object DarkMenuRenderer
+$script:darkRenderer = New-Object DarkMenuRenderer
+$script:ctxStrip.Renderer  = $script:darkRenderer
+# Submenu dropdowns render via the global manager renderer, not the strip's own,
+# so set it too — otherwise nested menu items keep the unreadable light highlight.
+[System.Windows.Forms.ToolStripManager]::Renderer = $script:darkRenderer
 $script:ctxStrip.BackColor = $darkBg
 $script:ctxStrip.ForeColor = $darkFg
 $script:ctxStrip.Font      = $menuFont
-$script:ctxStrip.ShowImageMargin = $false
+$script:ctxStrip.ShowImageMargin = $true
 
 function Add-Separator {
     $sep = New-Object System.Windows.Forms.ToolStripSeparator
@@ -151,7 +187,7 @@ function Check-Alert([string]$key, $util) {
 # ── Actions ───────────────────────────────────────────────────────────────
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now'             { Get-Usage; Get-Stats; Update-UI }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage'    { Start-Process 'https://claude.ai/settings/limits' }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage'    { Start-Process 'https://claude.ai/new#settings/usage' }))
 Add-Separator
 
 # ── Snap to corner ────────────────────────────────────────────────────────
