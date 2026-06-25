@@ -2,3 +2,4 @@
 *.pid
 *-state.json
 *-error.log
+.worktrees
