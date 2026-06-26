@@ -134,7 +134,7 @@ function New-StripItem([string]$text, [scriptblock]$onClick) {
     return $mi
 }
 
-function Get-SectionExpanded([string]$key) {
+function Get-SectionVisible([string]$key) {
     if (-not $script:Cfg -or -not $script:Cfg.Sections) { return $true }
 
     $sections = $script:Cfg.Sections
@@ -147,10 +147,14 @@ function Get-SectionExpanded([string]$key) {
     return $true
 }
 
+function Get-SectionExpanded([string]$key) {
+    return Get-SectionVisible $key
+}
+
 function Sync-SectionMenuItems {
     foreach ($key in @('claude','codex','cursor')) {
         if ($script:sectionItems.ContainsKey($key)) {
-            $script:sectionItems[$key].Checked = Get-SectionExpanded $key
+            $script:sectionItems[$key].Checked = Get-SectionVisible $key
         }
     }
 }
@@ -184,9 +188,9 @@ Add-Separator
 foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex'), @('Show/Hide Cursor','cursor'))) {
     $label = $pair[0]
     $key = $pair[1]
-    $item = New-StripItem $label ([scriptblock]::Create("Toggle-Section '$key'; Sync-SectionMenuItems"))
+    $item = New-StripItem $label ([scriptblock]::Create("`$visible = -not (Get-SectionVisible '$key'); Set-SectionVisible '$key' `$visible; `$script:Cfg.Sections['$key'] = `$visible; Save-UnifiedState; Sync-SectionMenuItems"))
     $item.CheckOnClick = $false
-    $item.Checked = Get-SectionExpanded $key
+    $item.Checked = Get-SectionVisible $key
     $script:sectionItems[$key] = $item
     [void]$script:ctxStrip.Items.Add($item)
 }

@@ -98,7 +98,7 @@ function Apply-UnifiedSettings {
     }
 
     foreach ($key in $script:UnifiedSectionKeys) {
-        Set-Section $key ([bool]$script:Cfg.Sections[$key])
+        Set-SectionVisible $key ([bool]$script:Cfg.Sections[$key])
     }
 
     Apply-UnifiedTheme $script:Cfg.Theme
