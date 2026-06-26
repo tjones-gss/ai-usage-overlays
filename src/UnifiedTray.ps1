@@ -26,6 +26,9 @@ function Wire-UnifiedWindowEvents {
         $sectionKey = $pair[1]
         $header = $script:window.FindName($headerName)
         if ($header) {
+            # Mark mouse-down handled so the window-level DragMove handler does not
+            # start a drag (which would otherwise swallow the header's mouse-up).
+            $header.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true })
             $header.Add_MouseLeftButtonUp([scriptblock]::Create("Toggle-Section '$sectionKey'; Sync-SectionMenuItems"))
         }
     }
