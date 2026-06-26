@@ -158,7 +158,8 @@ function Get-CodexStats {
                 if ($o.payload.model) {
                     $lastModel = [string]$o.payload.model
                 }
-            } elseif ($o.type -eq 'token_count') {
+            } elseif (($o.type -eq 'token_count') -or
+                      (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'token_count'))) {
                 $usage = $o.payload.info.total_token_usage
                 if ($usage) {
                     $lastUsage = $usage
