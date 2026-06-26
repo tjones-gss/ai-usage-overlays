@@ -77,7 +77,7 @@ $xaml = @'
         </Grid>
 
         <!-- ============ CLAUDE SECTION ============ -->
-        <StackPanel Margin="0,0,0,4">
+        <StackPanel x:Name="claudeSection" Margin="0,0,0,4">
           <Border x:Name="claudeHeader" Background="#11FFFFFF" CornerRadius="6"
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
@@ -237,7 +237,7 @@ $xaml = @'
         </StackPanel>
 
         <!-- ============ CODEX SECTION ============ -->
-        <StackPanel Margin="0,0,0,4">
+        <StackPanel x:Name="codexSection" Margin="0,0,0,4">
           <Border x:Name="codexHeader" Background="#11FFFFFF" CornerRadius="6"
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
@@ -300,7 +300,7 @@ $xaml = @'
         </StackPanel>
 
         <!-- ============ CURSOR SECTION ============ -->
-        <StackPanel Margin="0,0,0,4">
+        <StackPanel x:Name="cursorSection" Margin="0,0,0,4">
           <Border x:Name="cursorHeader" Background="#11FFFFFF" CornerRadius="6"
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
@@ -518,6 +518,18 @@ function Set-Section([string]$key, [bool]$expanded) {
     if (-not $body) { return }
     $body.Visibility = if ($expanded) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
     if ($chev) { $chev.Text = if ($expanded) { 'v' } else { '>' } }
+}
+
+# ---------------------------------------------------------------------------
+# Set-SectionVisible - whole-section visibility for tray Show/Hide.
+# Keeps the accordion body state independent; hiding a wrapper hides header+body.
+# ---------------------------------------------------------------------------
+function Set-SectionVisible([string]$key, [bool]$visible) {
+    if (-not $script:window) { return }
+    $section = $script:window.FindName($key + 'Section')
+    if (-not $section) { return }
+    $section.Visibility = if ($visible) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+    Resize-ToContent
 }
 
 # ---------------------------------------------------------------------------
