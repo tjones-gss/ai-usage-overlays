@@ -755,9 +755,11 @@ function Update-AllSections {
     Update-CodexSection
     Update-CursorSection
 
-    # SizeToContent is Manual, so content changes (opus row appears, error text)
-    # don't auto-grow the window - re-fit it (non-animated) here.
-    Resize-ToContent
+    # NOTE: Resize-ToContent is deliberately NOT called here. This runs on the
+    # 30s tick timer, and a full-tree Measure every 30s is wasted work (content
+    # height only changes on the 180s data poll or a section toggle). Callers
+    # that change content size (poll-completion handler, startup restore) invoke
+    # Resize-ToContent explicitly; Toggle-Section resizes via its animation.
 
     if ($script:notify -and $script:State -and $script:State.Data) {
         $cd = $script:State.Data
