@@ -40,6 +40,8 @@ function Quit-App {
     $script:ReallyQuit = $true
     if ($script:pollTimer) { $script:pollTimer.Stop() }
     if ($script:tickTimer) { $script:tickTimer.Stop() }
+    if ($script:jobTimer)  { $script:jobTimer.Stop() }
+    if ($script:pollJob)   { Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue; $script:pollJob = $null }
     if ($script:notify)    { $script:notify.Visible = $false; $script:notify.Dispose() }
     $script:window.Close()
     $script:window.Dispatcher.InvokeShutdown()
