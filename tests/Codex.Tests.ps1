@@ -16,6 +16,7 @@ BeforeAll {
             [long]$InputTokens,
             [long]$CachedInputTokens,
             [long]$OutputTokens,
+            $RateLimits = $null,
             [switch]$Legacy
         )
 
@@ -35,6 +36,15 @@ BeforeAll {
             }
         }
 
+        $payload = @{
+            type                 = 'token_count'
+            info                 = $info
+            model_context_window = 258400
+        }
+        if ($RateLimits) {
+            $payload.rate_limits = $RateLimits
+        }
+
         if ($Legacy) {
             return @{
                 timestamp = $Timestamp
@@ -48,14 +58,7 @@ BeforeAll {
         return @{
             timestamp = $Timestamp
             type      = 'event_msg'
-            payload   = @{
-                type                 = 'token_count'
-                info                 = $info
-                model_context_window = 258400
-            }
-            rate_limits = @{
-                primary = @{ used_percent = 0 }
-            }
+            payload   = $payload
         }
     }
 
@@ -158,6 +161,41 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.TodayMsg  | Should -Be 1
         $script:CodexStats.TodayTok  | Should -Be 370
         $script:CodexStats.ValueUSD  | Should -BeGreaterThan 0
+    }
+
+    It 'parses rate limits from the real event_msg payload shape' {
+        $baseTime = (Get-Date).Date.AddHours(11)
+        $tsMeta = New-TestTimestamp $baseTime
+        $tsToken1 = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $tsToken2 = New-TestTimestamp ($baseTime.AddMinutes(2))
+        $fiveHourReset = 1782503136
+        $weekReset = 1783089936
+
+        $firstLimits = @{
+            limit_id   = 'codex'
+            primary    = @{ used_percent = 12.0; window_minutes = 300; resets_at = $fiveHourReset - 60 }
+            secondary  = @{ used_percent = 3.0; window_minutes = 10080; resets_at = $weekReset - 60 }
+            plan_type  = 'team'
+        }
+        $lastLimits = @{
+            limit_id   = 'codex'
+            primary    = @{ used_percent = 33.0; window_minutes = 300; resets_at = $fiveHourReset }
+            secondary  = @{ used_percent = 5.0; window_minutes = 10080; resets_at = $weekReset }
+            plan_type  = 'team'
+        }
+
+        Write-CodexFixture '2026\06\10\rate-limit-test.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='limits'; timestamp=$tsMeta } }
+            (New-CodexTokenEvent $tsToken1 100 10 20 $firstLimits)
+            (New-CodexTokenEvent $tsToken2 300 50 70 $lastLimits)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.FiveHourPct | Should -Be 33.0
+        $script:CodexStats.WeekPct | Should -Be 5.0
+        $script:CodexStats.FiveHourResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($fiveHourReset).LocalDateTime)
+        $script:CodexStats.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($weekReset).LocalDateTime)
     }
 
     It 'still parses legacy top-level token_count events' {

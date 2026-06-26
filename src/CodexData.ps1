@@ -29,6 +29,18 @@ function Convert-CodexTimestamp {
     }
 }
 
+function Convert-CodexEpochSeconds {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    try {
+        return [System.DateTimeOffset]::FromUnixTimeSeconds([long][double]$Value).LocalDateTime
+    } catch {
+        return $null
+    }
+}
+
 function Estimate-CodexCost([string]$model, $v) {
     if (-not $script:CodexPrices) { throw 'Estimate-CodexCost: $script:CodexPrices not loaded - dot-source Config.ps1 first.' }
 
@@ -60,10 +72,14 @@ function Estimate-CodexCost([string]$model, $v) {
            ($outputTokens        / 1e6 * $p.out)
 }
 
-function Measure-CodexStats([object[]]$records, [datetime]$today) {
+function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = $null) {
     $val = 0.0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
     $tMsg = 0; $tTok = 0L
+    $fiveHourPct = $null
+    $fiveHourResetsAt = $null
+    $weekPct = $null
+    $weekResetsAt = $null
 
     foreach ($r in $records) {
         $v = @{
@@ -82,15 +98,41 @@ function Measure-CodexStats([object[]]$records, [datetime]$today) {
         }
     }
 
+    if ($rateLimits) {
+        $primary = $rateLimits.primary
+        if ($primary) {
+            if ($null -ne $primary.used_percent) {
+                $fiveHourPct = [double]$primary.used_percent
+            }
+            if ($null -ne $primary.resets_at) {
+                $fiveHourResetsAt = Convert-CodexEpochSeconds $primary.resets_at
+            }
+        }
+
+        $secondary = $rateLimits.secondary
+        if ($secondary) {
+            if ($null -ne $secondary.used_percent) {
+                $weekPct = [double]$secondary.used_percent
+            }
+            if ($null -ne $secondary.resets_at) {
+                $weekResetsAt = Convert-CodexEpochSeconds $secondary.resets_at
+            }
+        }
+    }
+
     return @{
-        ValueUSD     = $val
-        InTokens     = $tin
-        OutTokens    = $tout
-        Sessions     = $sessions.Count
-        Messages     = $records.Count
-        TodayMsg     = $tMsg
-        TodayTok     = $tTok
-        LastComputed = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+        ValueUSD         = $val
+        InTokens         = $tin
+        OutTokens        = $tout
+        Sessions         = $sessions.Count
+        Messages         = $records.Count
+        TodayMsg         = $tMsg
+        TodayTok         = $tTok
+        FiveHourPct      = $fiveHourPct
+        FiveHourResetsAt = $fiveHourResetsAt
+        WeekPct          = $weekPct
+        WeekResetsAt     = $weekResetsAt
+        LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }
 
@@ -108,6 +150,8 @@ function Get-CodexStats {
     }
 
     $allRecords = [System.Collections.Generic.List[object]]::new()
+    $latestRateLimits = $null
+    $latestTokenDate = $null
 
     foreach ($file in $files) {
         $stamp = "$($file.LastWriteTimeUtc.Ticks):$($file.Length)"
@@ -116,6 +160,10 @@ function Get-CodexStats {
         if ($cached -and $cached.Stamp -eq $stamp) {
             foreach ($r in $cached.Records) {
                 $allRecords.Add($r)
+            }
+            if ($cached.LastTokenDate -and ((-not $latestTokenDate) -or ($cached.LastTokenDate -gt $latestTokenDate))) {
+                $latestTokenDate = $cached.LastTokenDate
+                $latestRateLimits = $cached.RateLimits
             }
             continue
         }
@@ -133,6 +181,7 @@ function Get-CodexStats {
         $sessionId = $null
         $sessionDate = $null
         $lastTokenDate = $null
+        $lastRateLimits = $null
 
         foreach ($line in $lines) {
             if (-not $line) { continue }
@@ -161,8 +210,13 @@ function Get-CodexStats {
             } elseif (($o.type -eq 'token_count') -or
                       (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'token_count'))) {
                 $usage = $o.payload.info.total_token_usage
+                $limits = $o.payload.rate_limits
+                if (-not $limits) {
+                    $limits = $o.rate_limits
+                }
                 if ($usage) {
                     $lastUsage = $usage
+                    $lastRateLimits = $limits
                     $tokenDate = Convert-CodexTimestamp $o.timestamp
                     if ($tokenDate) {
                         $lastTokenDate = $tokenDate
@@ -192,7 +246,23 @@ function Get-CodexStats {
             })
         }
 
-        $script:CodexStatsFileCache[$file.FullName] = @{ Stamp = $stamp; Records = $fileRecords }
+        $fileTokenDate = $lastTokenDate
+        if ($lastUsage) {
+            if (-not $fileTokenDate) { $fileTokenDate = $sessionDate }
+            if (-not $fileTokenDate) { $fileTokenDate = $file.LastWriteTime }
+
+            if ((-not $latestTokenDate) -or ($fileTokenDate -gt $latestTokenDate)) {
+                $latestTokenDate = $fileTokenDate
+                $latestRateLimits = $lastRateLimits
+            }
+        }
+
+        $script:CodexStatsFileCache[$file.FullName] = @{
+            Stamp         = $stamp
+            Records       = $fileRecords
+            LastTokenDate = $fileTokenDate
+            RateLimits    = $lastRateLimits
+        }
 
         foreach ($r in $fileRecords) {
             $allRecords.Add($r)
@@ -200,7 +270,7 @@ function Get-CodexStats {
     }
 
     try {
-        $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date)
+        $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"
     }
