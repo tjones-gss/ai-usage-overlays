@@ -20,6 +20,12 @@ $script:Prices = @{
     haiku  = @{ in = 1.0;  out = 5.0;  cw = 1.25;  cr = 0.10 }
 }
 
+$script:CodexPricesAsOf = '2026-06-26'
+$script:CodexPrices = @{
+    'gpt-5.5' = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
+    default   = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
+}
+
 # ---------------------------------------------------------------------------
 # User-Agent detection
 # ---------------------------------------------------------------------------
@@ -77,6 +83,18 @@ $script:Themes = [ordered]@{
         SonFg       = '#94A3B8'
         OpusFg      = '#94A3B8'
         Stripe      = '#334155','#64748B','#94A3B8','#64748B'
+    }
+    'Black & White' = @{
+        BgC1 = '#0A0A0A'; BgC2 = '#000000'; BorderC1 = '#2A2A2A'; GssLabelFg = '#B0B0B0'
+        FivehColors = '#3A3A3A','#E8E8E8'
+        WeekColors  = '#3A3A3A','#E8E8E8'
+        SonColors   = '#3A3A3A','#E8E8E8'
+        OpusColors  = '#3A3A3A','#9A9A9A'
+        FivehFg     = '#E8E8E8'
+        WeekFg      = '#E8E8E8'
+        SonFg       = '#E8E8E8'
+        OpusFg      = '#E8E8E8'
+        Stripe      = '#E8E8E8','#B0B0B0','#7A7A7A','#4A4A4A'
     }
 }
 
