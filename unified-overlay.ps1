@@ -124,30 +124,140 @@ function Restore-UnifiedSections {
 }
 
 # ---------------------------------------------------------------------------
-# Startup sequence
+# Async data gathering (off the WPF dispatcher thread)
+#
+# The poll fans out to network (cursor.com, api.anthropic.com — up to 20s each)
+# and to 5 sqlite3.exe spawns. Doing that synchronously on the UI thread froze
+# the window for up to ~40s every 3 minutes. Instead we Start-ThreadJob a
+# self-contained gather (no WPF, separate runspace → no shared $script: vars),
+# and a fast completion-poll timer marshals the RETURNED data back onto the UI
+# thread and renders there.
 # ---------------------------------------------------------------------------
-Load-History
-Load-UnifiedState
-Get-Usage
-Get-Stats
-Get-CodexStats
-Get-CursorUsage
-Get-CursorLocalStats
-Update-AllSections
-Apply-UnifiedSettings
-Restore-UnifiedSections
 
-$script:pollTimer = New-Object System.Windows.Threading.DispatcherTimer
-$script:pollTimer.Interval = [TimeSpan]::FromSeconds(180)
-$script:pollTimer.add_Tick({
+# Runs in a background runspace. Dot-sources the data modules fresh, computes
+# all three sources, and RETURNS one hashtable. Touches no WPF objects.
+$script:GatherScript = {
+    param([string]$AppDir, [string]$CredPath, [string]$ErrLog)
+
+    $script:AppDir   = $AppDir
+    $script:CredPath = $CredPath
+    $script:ErrLog   = $ErrLog
+    # Invoke-Sqlite resolves sqlite3.exe via $PSScriptRoot (src\) then PATH; the
+    # bundled exe lives in the app root, so make it findable via PATH here.
+    $env:PATH = "$AppDir;$env:PATH"
+
+    . (Join-Path $AppDir 'src\Config.ps1')
+    . (Join-Path $AppDir 'src\Format.ps1')
+    . (Join-Path $AppDir 'src\Pricing.ps1')
+    . (Join-Path $AppDir 'src\History.ps1')
+    . (Join-Path $AppDir 'src\Data.ps1')
+    . (Join-Path $AppDir 'src\CodexData.ps1')
+    . (Join-Path $AppDir 'src\CursorData.ps1')
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    # State hashtable mirrors the shape unified-overlay.ps1 declares.
+    $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
+
+    Load-History
     Get-Usage
     Get-Stats
     Get-CodexStats
     Get-CursorUsage
     Get-CursorLocalStats
-    Update-AllSections
-})
 
+    # Return only plain data — never a WPF object.
+    @{
+        State           = $script:State
+        Stats           = $script:Stats
+        CodexStats      = $script:CodexStats
+        LiveData        = $script:LiveData
+        SummaryData     = $script:SummaryData
+        LocalData       = $script:LocalData
+        AuthState       = $script:AuthState
+        CursorErrMsg    = $script:CursorErrMsg
+        CursorLastFetch = $script:CursorLastFetch
+    }
+}
+
+$script:pollJob = $null
+
+# A ThreadJob sits in 'NotStarted' for a few tens of ms before it flips to
+# 'Running', so "still in flight" must cover BOTH states — otherwise we'd
+# Receive/Remove a job that hasn't even begun, or start an overlapping one.
+function Test-PollJobInFlight {
+    $script:pollJob -and ($script:pollJob.State -eq 'Running' -or $script:pollJob.State -eq 'NotStarted')
+}
+
+# Marshal a finished gather job's data into the UI-scope $script: vars, then
+# render on this (UI) thread. Returns $true if results were applied.
+function Complete-PollJob {
+    if (-not $script:pollJob) { return $false }
+    if (Test-PollJobInFlight) { return $false }
+
+    try {
+        $r = Receive-Job $script:pollJob -ErrorAction SilentlyContinue
+        # A job that returns multiple objects yields an array; take the hashtable.
+        if ($r -is [object[]]) { $r = $r | Where-Object { $_ -is [hashtable] } | Select-Object -Last 1 }
+        if ($r) {
+            $script:State           = $r.State
+            $script:Stats           = $r.Stats
+            $script:CodexStats      = $r.CodexStats
+            $script:LiveData        = $r.LiveData
+            $script:SummaryData     = $r.SummaryData
+            $script:LocalData       = $r.LocalData
+            $script:AuthState       = $r.AuthState
+            $script:CursorErrMsg    = $r.CursorErrMsg
+            $script:CursorLastFetch = $r.CursorLastFetch
+            Update-AllSections
+            Resize-ToContent
+        }
+    } catch {
+        Write-Log "Complete-PollJob failed: $($_.Exception.Message)"
+    } finally {
+        Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue
+        $script:pollJob = $null
+    }
+    return $true
+}
+
+# Start a gather job unless one is already in flight (no overlapping polls).
+function Start-PollJob {
+    if (Test-PollJobInFlight) {
+        Write-Log 'Start-PollJob: previous gather still running; skipping this poll.'
+        return
+    }
+    if ($script:pollJob) { Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue; $script:pollJob = $null }
+    $script:pollJob = Start-ThreadJob -ScriptBlock $script:GatherScript `
+        -ArgumentList $script:AppDir, $script:CredPath, $script:ErrLog
+}
+
+# ---------------------------------------------------------------------------
+# Startup sequence — window shows immediately in a "loading" state; the first
+# data load runs async and fills in when the gather job returns.
+# ---------------------------------------------------------------------------
+Load-UnifiedState
+$script:State.Status  = 'init'
+$script:State.Message = 'loading...'
+Update-AllSections
+Apply-UnifiedSettings
+Restore-UnifiedSections
+Resize-ToContent
+Start-PollJob
+
+# Poll timer: every 180s kick off a fresh async gather (skips if one is running).
+$script:pollTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:pollTimer.Interval = [TimeSpan]::FromSeconds(180)
+$script:pollTimer.add_Tick({ Start-PollJob })
+
+# Completion timer: cheaply checks whether the gather job has finished and, if
+# so, marshals its data onto the UI thread and renders (runs only on completion).
+$script:jobTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:jobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+$script:jobTimer.add_Tick({ [void](Complete-PollJob) })
+
+# Tick timer: refreshes reset countdowns/clock every 30s (render only, no I/O,
+# no layout Measure — Resize-ToContent is intentionally NOT in this path).
 $script:tickTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:tickTimer.Interval = [TimeSpan]::FromSeconds(30)
 $script:tickTimer.add_Tick({ Update-AllSections })
@@ -167,6 +277,7 @@ function Build-And-Show {
             Update-AllSections
             Apply-UnifiedSettings
             Restore-UnifiedSections
+            Resize-ToContent
         }
         Wire-UnifiedWindowEvents
         try {
@@ -188,6 +299,7 @@ if (-not (Build-And-Show)) {
 }
 
 $script:pollTimer.Start()
+$script:jobTimer.Start()
 $script:tickTimer.Start()
 
 # Write PID file so Uninstall.bat can terminate the process.
