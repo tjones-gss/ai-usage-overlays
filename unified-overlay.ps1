@@ -170,6 +170,7 @@ $script:ClaudeUsageScript = {
         AuthState       = $script:AuthState
         CursorErrMsg    = $script:CursorErrMsg
         CursorLastFetch = $script:CursorLastFetch
+        History         = @($script:History)
     }
 }
 
@@ -276,6 +277,8 @@ function Complete-RefreshJobs {
                         $script:AuthState       = $r['AuthState']
                         $script:CursorErrMsg    = $r['CursorErrMsg']
                         $script:CursorLastFetch = $r['CursorLastFetch']
+                        $script:History         = [System.Collections.Generic.List[object]]::new()
+                        foreach ($sample in @($r['History'])) { [void]$script:History.Add($sample) }
                     }
                     'ClaudeStats' {
                         $script:Stats = $r['Stats']
