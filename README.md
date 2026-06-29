@@ -4,6 +4,15 @@ Always-on-top Windows HUD that shows live usage stats for Claude Code, Codex, an
 
 ![Unified overlay preview](docs/preview.png)
 
+## What's New (fix/fast-startup)
+
+- **Black box fix**: Window now fades in via the `ContentRendered` opacity trick instead of flashing a black box.
+- **Parallel data jobs**: Claude usage, stats, and Codex each load in separate background threads, so data appears as each source finishes without waiting for the slowest source.
+- **Persistent disk cache**: `stats-cache.json` and `codex-cache.json` make warm restarts near-instant instead of re-parsing all files.
+- **Startup API timeout**: Reduced to 5 seconds.
+- **Usage response cache**: Shows last known data instantly on startup in under 3 seconds, then refreshes in the background.
+- **Context menu restored**: All 12 items are back: Copy stats to clipboard, Open claude.ai/usage, Snap to corner, Opacity, Theme, Show stats panel, Open at login, Start hidden to tray, Threshold alerts, Show history graph, Minimize to tray, and Quit.
+
 ## What It Shows
 
 **Claude Code**
