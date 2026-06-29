@@ -262,6 +262,18 @@ $script:tickTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:tickTimer.Interval = [TimeSpan]::FromSeconds(30)
 $script:tickTimer.add_Tick({ Update-AllSections })
 
+function Show-UnifiedWindowWhenRendered {
+    $script:window.Opacity = 0
+    $script:window.add_ContentRendered({
+        $opacity = 1.0
+        if ($script:Cfg -and $script:Cfg.ContainsKey('Opacity') -and $null -ne $script:Cfg.Opacity) {
+            $opacity = [double]$script:Cfg.Opacity
+        }
+        $script:window.Opacity = $opacity
+    })
+    $script:window.Show()
+}
+
 # Build-And-Show: retry window Show() until the DWM compositor is ready.
 # At login the Startup-folder shortcut can fire before the desktop is fully
 # initialised, causing WPF's SetRootVisual to fail with "VisualTarget cannot
@@ -281,7 +293,7 @@ function Build-And-Show {
         }
         Wire-UnifiedWindowEvents
         try {
-            if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { $script:window.Show() }
+            if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { Show-UnifiedWindowWhenRendered }
             return $true
         } catch {
             if ($_.Exception.Message -notmatch 'VisualTarget') { throw }
