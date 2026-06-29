@@ -184,9 +184,9 @@ function Copy-Stats {
 
     if ($script:LocalData) {
         $ld = $script:LocalData
-        $lines += "Cursor local: $($ld.total) total / $($ld.today) today"
-        if ($ld.topModel) { $lines += "Cursor top model: $($ld.topModel) $($ld.topPct)" }
-        if ($ld.convos)   { $lines += "Cursor conversations: $($ld.convos)" }
+        $lines += "Cursor edits: $($ld.edits30d) (30d) / $($ld.editsToday) today"
+        if ($ld.topModel)      { $lines += "Cursor top model: $($ld.topModel) $($ld.topPct)%" }
+        if ($ld.linesAccepted) { $lines += "Cursor AI lines accepted (30d): $($ld.linesAccepted)" }
     }
 
     [System.Windows.Clipboard]::SetText(($lines -join "`n"))
