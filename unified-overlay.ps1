@@ -128,15 +128,15 @@ function Restore-UnifiedSections {
 #
 # The poll fans out to network (cursor.com, api.anthropic.com — up to 20s each)
 # and to 5 sqlite3.exe spawns. Doing that synchronously on the UI thread froze
-# the window for up to ~40s every 3 minutes. Instead we Start-ThreadJob a
-# self-contained gather (no WPF, separate runspace → no shared $script: vars),
-# and a fast completion-poll timer marshals the RETURNED data back onto the UI
-# thread and renders there.
+# the window for up to ~40s every 3 minutes. Instead we Start-ThreadJob
+# self-contained refreshes (no WPF, separate runspace -> no shared $script: vars),
+# and a fast completion-poll timer marshals each RETURNED data packet back onto
+# the UI thread and renders there.
 # ---------------------------------------------------------------------------
 
-# Runs in a background runspace. Dot-sources the data modules fresh, computes
-# all three sources, and RETURNS one hashtable. Touches no WPF objects.
-$script:GatherScript = {
+# Runs in background runspaces. Each job dot-sources the modules it needs and
+# RETURNS plain data only; WPF objects are touched only on the dispatcher thread.
+$script:ClaudeUsageScript = {
     param([string]$AppDir, [string]$CredPath, [string]$ErrLog, [int]$UsageTimeoutSec = 20)
 
     $script:AppDir   = $AppDir
@@ -147,11 +147,8 @@ $script:GatherScript = {
     $env:PATH = "$AppDir;$env:PATH"
 
     . (Join-Path $AppDir 'src\Config.ps1')
-    . (Join-Path $AppDir 'src\Format.ps1')
-    . (Join-Path $AppDir 'src\Pricing.ps1')
     . (Join-Path $AppDir 'src\History.ps1')
     . (Join-Path $AppDir 'src\Data.ps1')
-    . (Join-Path $AppDir 'src\CodexData.ps1')
     . (Join-Path $AppDir 'src\CursorData.ps1')
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -161,16 +158,12 @@ $script:GatherScript = {
 
     Load-History
     Get-Usage -TimeoutSec $UsageTimeoutSec
-    Get-Stats
-    Get-CodexStats
     Get-CursorUsage
     Get-CursorLocalStats
 
-    # Return only plain data — never a WPF object.
     @{
+        Kind            = 'ClaudeUsage'
         State           = $script:State
-        Stats           = $script:Stats
-        CodexStats      = $script:CodexStats
         LiveData        = $script:LiveData
         SummaryData     = $script:SummaryData
         LocalData       = $script:LocalData
@@ -180,63 +173,143 @@ $script:GatherScript = {
     }
 }
 
-$script:pollJob = $null
+$script:ClaudeStatsScript = {
+    param([string]$AppDir, [string]$ErrLog)
 
-# A ThreadJob sits in 'NotStarted' for a few tens of ms before it flips to
-# 'Running', so "still in flight" must cover BOTH states — otherwise we'd
-# Receive/Remove a job that hasn't even begun, or start an overlapping one.
-function Test-PollJobInFlight {
-    $script:pollJob -and ($script:pollJob.State -eq 'Running' -or $script:pollJob.State -eq 'NotStarted')
-}
+    $script:AppDir = $AppDir
+    $script:ErrLog = $ErrLog
 
-# Marshal a finished gather job's data into the UI-scope $script: vars, then
-# render on this (UI) thread. Returns $true if results were applied.
-function Complete-PollJob {
-    if (-not $script:pollJob) { return $false }
-    if (Test-PollJobInFlight) { return $false }
+    . (Join-Path $AppDir 'src\Config.ps1')
+    . (Join-Path $AppDir 'src\Pricing.ps1')
+    . (Join-Path $AppDir 'src\Data.ps1')
 
-    try {
-        $r = Receive-Job $script:pollJob -ErrorAction SilentlyContinue
-        # A job that returns multiple objects yields an array; take the hashtable.
-        if ($r -is [object[]]) { $r = $r | Where-Object { $_ -is [hashtable] } | Select-Object -Last 1 }
-        if ($r) {
-            $script:State           = $r.State
-            $script:Stats           = $r.Stats
-            $script:CodexStats      = $r.CodexStats
-            $script:LiveData        = $r.LiveData
-            $script:SummaryData     = $r.SummaryData
-            $script:LocalData       = $r.LocalData
-            $script:AuthState       = $r.AuthState
-            $script:CursorErrMsg    = $r.CursorErrMsg
-            $script:CursorLastFetch = $r.CursorLastFetch
-            Update-AllSections
-            Resize-ToContent
-        }
-    } catch {
-        Write-Log "Complete-PollJob failed: $($_.Exception.Message)"
-    } finally {
-        Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue
-        $script:pollJob = $null
+    Get-Stats
+
+    @{
+        Kind  = 'ClaudeStats'
+        Stats = $script:Stats
     }
-    return $true
 }
 
-# Start a gather job unless one is already in flight (no overlapping polls).
-function Start-PollJob {
+$script:CodexStatsScript = {
+    param([string]$AppDir, [string]$ErrLog)
+
+    $script:AppDir = $AppDir
+    $script:ErrLog = $ErrLog
+
+    . (Join-Path $AppDir 'src\Config.ps1')
+    . (Join-Path $AppDir 'src\Pricing.ps1')
+    . (Join-Path $AppDir 'src\Data.ps1')
+    . (Join-Path $AppDir 'src\CodexData.ps1')
+
+    Get-CodexStats
+
+    @{
+        Kind       = 'CodexStats'
+        CodexStats = $script:CodexStats
+    }
+}
+
+$script:pollJobs = @{}
+
+function Start-AllRefreshJobs {
     param([int]$UsageTimeoutSec = 20)
 
-    if (Test-PollJobInFlight) {
-        Write-Log 'Start-PollJob: previous gather still running; skipping this poll.'
-        return
+    $jobs = @(
+        @{
+            Kind       = 'ClaudeUsage'
+            Script     = $script:ClaudeUsageScript
+            Arguments  = @($script:AppDir, $script:CredPath, $script:ErrLog, $UsageTimeoutSec)
+        }
+        @{
+            Kind       = 'ClaudeStats'
+            Script     = $script:ClaudeStatsScript
+            Arguments  = @($script:AppDir, $script:ErrLog)
+        }
+        @{
+            Kind       = 'CodexStats'
+            Script     = $script:CodexStatsScript
+            Arguments  = @($script:AppDir, $script:ErrLog)
+        }
+    )
+
+    foreach ($jobSpec in $jobs) {
+        $kind = $jobSpec.Kind
+
+        if ($script:pollJobs.ContainsKey($kind)) {
+            $existing = $script:pollJobs[$kind]
+            if ($existing.State -eq 'Running' -or $existing.State -eq 'NotStarted') {
+                Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                continue
+            }
+
+            Remove-Job $existing -Force -ErrorAction SilentlyContinue
+            $script:pollJobs.Remove($kind)
+        }
+
+        $script:pollJobs[$kind] = Start-ThreadJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
     }
-    if ($script:pollJob) { Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue; $script:pollJob = $null }
-    $script:pollJob = Start-ThreadJob -ScriptBlock $script:GatherScript `
-        -ArgumentList $script:AppDir, $script:CredPath, $script:ErrLog, $UsageTimeoutSec
+}
+
+function Complete-RefreshJobs {
+    if (-not $script:pollJobs -or $script:pollJobs.Count -eq 0) { return $false }
+
+    $completedAny = $false
+
+    foreach ($kind in @($script:pollJobs.Keys)) {
+        $job = $script:pollJobs[$kind]
+        if ($job.State -eq 'Running' -or $job.State -eq 'NotStarted') { continue }
+
+        try {
+            $results = @(Receive-Job $job -ErrorAction SilentlyContinue)
+            $r = $results | Where-Object { $_ -is [hashtable] -and $_.ContainsKey('Kind') } | Select-Object -Last 1
+
+            if ($r) {
+                $resultKind = [string]$r['Kind']
+                $applied = $true
+                switch ($resultKind) {
+                    'ClaudeUsage' {
+                        $script:State           = $r['State']
+                        $script:LiveData        = $r['LiveData']
+                        $script:SummaryData     = $r['SummaryData']
+                        $script:LocalData       = $r['LocalData']
+                        $script:AuthState       = $r['AuthState']
+                        $script:CursorErrMsg    = $r['CursorErrMsg']
+                        $script:CursorLastFetch = $r['CursorLastFetch']
+                    }
+                    'ClaudeStats' {
+                        $script:Stats = $r['Stats']
+                    }
+                    'CodexStats' {
+                        $script:CodexStats = $r['CodexStats']
+                    }
+                    default {
+                        Write-Log "Complete-RefreshJobs: unknown result kind '$resultKind'."
+                        $applied = $false
+                    }
+                }
+
+                if ($applied) {
+                    Update-AllSections
+                    Resize-ToContent
+                }
+            }
+
+            $completedAny = $true
+        } catch {
+            Write-Log "Complete-RefreshJobs: $kind failed: $($_.Exception.Message)"
+        } finally {
+            Remove-Job $job -Force -ErrorAction SilentlyContinue
+            $script:pollJobs.Remove($kind)
+        }
+    }
+
+    return $completedAny
 }
 
 # ---------------------------------------------------------------------------
 # Startup sequence — window shows immediately in a "loading" state; the first
-# data load runs async and fills in when the gather job returns.
+# data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
 $script:State.Status  = 'init'
@@ -245,18 +318,18 @@ Update-AllSections
 Apply-UnifiedSettings
 Restore-UnifiedSections
 Resize-ToContent
-Start-PollJob -UsageTimeoutSec 8
+Start-AllRefreshJobs -UsageTimeoutSec 8
 
-# Poll timer: every 180s kick off a fresh async gather (skips if one is running).
+# Poll timer: every 180s kick off fresh async refreshes (skips sources still running).
 $script:pollTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:pollTimer.Interval = [TimeSpan]::FromSeconds(180)
-$script:pollTimer.add_Tick({ Start-PollJob })
+$script:pollTimer.add_Tick({ Start-AllRefreshJobs })
 
-# Completion timer: cheaply checks whether the gather job has finished and, if
-# so, marshals its data onto the UI thread and renders (runs only on completion).
+# Completion timer: cheaply checks whether refresh jobs have finished and, if
+# so, marshals their data onto the UI thread and renders immediately.
 $script:jobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:jobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
-$script:jobTimer.add_Tick({ [void](Complete-PollJob) })
+$script:jobTimer.add_Tick({ [void](Complete-RefreshJobs) })
 
 # Tick timer: refreshes reset countdowns/clock every 30s (render only, no I/O,
 # no layout Measure — Resize-ToContent is intentionally NOT in this path).
