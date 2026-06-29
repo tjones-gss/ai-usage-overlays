@@ -137,7 +137,7 @@ function Restore-UnifiedSections {
 # Runs in a background runspace. Dot-sources the data modules fresh, computes
 # all three sources, and RETURNS one hashtable. Touches no WPF objects.
 $script:GatherScript = {
-    param([string]$AppDir, [string]$CredPath, [string]$ErrLog)
+    param([string]$AppDir, [string]$CredPath, [string]$ErrLog, [int]$UsageTimeoutSec = 20)
 
     $script:AppDir   = $AppDir
     $script:CredPath = $CredPath
@@ -160,7 +160,7 @@ $script:GatherScript = {
     $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
 
     Load-History
-    Get-Usage
+    Get-Usage -TimeoutSec $UsageTimeoutSec
     Get-Stats
     Get-CodexStats
     Get-CursorUsage
@@ -223,13 +223,15 @@ function Complete-PollJob {
 
 # Start a gather job unless one is already in flight (no overlapping polls).
 function Start-PollJob {
+    param([int]$UsageTimeoutSec = 20)
+
     if (Test-PollJobInFlight) {
         Write-Log 'Start-PollJob: previous gather still running; skipping this poll.'
         return
     }
     if ($script:pollJob) { Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue; $script:pollJob = $null }
     $script:pollJob = Start-ThreadJob -ScriptBlock $script:GatherScript `
-        -ArgumentList $script:AppDir, $script:CredPath, $script:ErrLog
+        -ArgumentList $script:AppDir, $script:CredPath, $script:ErrLog, $UsageTimeoutSec
 }
 
 # ---------------------------------------------------------------------------
@@ -243,7 +245,7 @@ Update-AllSections
 Apply-UnifiedSettings
 Restore-UnifiedSections
 Resize-ToContent
-Start-PollJob
+Start-PollJob -UsageTimeoutSec 8
 
 # Poll timer: every 180s kick off a fresh async gather (skips if one is running).
 $script:pollTimer = New-Object System.Windows.Threading.DispatcherTimer
