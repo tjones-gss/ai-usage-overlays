@@ -183,6 +183,9 @@ function Add-Separator {
 # Actions
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now' { Get-Usage; Get-Stats; Get-CodexStats; Get-CursorUsage; Get-CursorLocalStats; Update-AllSections }))
 Add-Separator
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
+Add-Separator
 
 # Sections
 foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex'), @('Show/Hide Cursor','cursor'))) {
@@ -237,9 +240,18 @@ $script:miLogin = New-StripItem 'Open at login' {
 }
 $script:miLogin.Checked = (Test-Autostart)
 [void]$script:ctxStrip.Items.Add($script:miLogin)
+
+$miSH = New-StripItem 'Start hidden to tray' {
+    $script:Cfg.StartHidden = -not [bool]$script:Cfg.StartHidden
+    $miSH.Checked = [bool]$script:Cfg.StartHidden
+    Save-UnifiedState
+}
+$miSH.Checked = [bool]$script:Cfg.StartHidden
+[void]$script:ctxStrip.Items.Add($miSH)
 Add-Separator
 
 # Window
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Minimize to tray' { $script:window.Hide() }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Quit' { Quit-App }))
 
 # ---------------------------------------------------------------------------
