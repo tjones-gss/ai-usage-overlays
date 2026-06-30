@@ -24,7 +24,6 @@ function Add-HistorySample([object]$data) {
         t               = (Get-Date -Format 'o')  # ISO 8601
         five_hour       = if ($data.five_hour)        { [double]$data.five_hour.utilization }        else { $null }
         seven_day       = if ($data.seven_day)         { [double]$data.seven_day.utilization }         else { $null }
-        seven_day_sonnet = if ($data.seven_day_sonnet) { [double]$data.seven_day_sonnet.utilization }  else { $null }
         seven_day_opus  = if ($data.seven_day_opus)   { [double]$data.seven_day_opus.utilization }    else { $null }
     }
     $script:History.Add($sample)
