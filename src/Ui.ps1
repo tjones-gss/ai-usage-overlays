@@ -127,36 +127,6 @@ $xaml = @'
                      FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
         </StackPanel>
 
-        <!-- Sonnet metric -->
-        <StackPanel Margin="0,0,0,7">
-          <Grid Margin="0,0,0,3">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock x:Name="sonLabel" Grid.Column="0" Text="SONNET WEEKLY"
-                       Foreground="#C084FC" FontSize="8" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
-            <TextBlock Grid.Column="1" x:Name="sonPct" Text="--" Foreground="#F1F5F9"
-                       FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
-            <TextBlock Grid.Column="2" x:Name="sonReset" Text=""
-                       Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas"
-                       VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-          </Grid>
-          <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
-            <Border x:Name="sonBar" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="250">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                  <GradientStop Color="#6D28D9" Offset="0"/>
-                  <GradientStop Color="#C084FC" Offset="1"/>
-                </LinearGradientBrush>
-              </Border.Background>
-            </Border>
-          </Border>
-          <TextBlock x:Name="sonSub" Text="used" Foreground="#5C7A96"
-                     FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
-        </StackPanel>
-
         <!-- Opus metric (collapsed unless used) -->
         <StackPanel x:Name="opusRow" Margin="0,0,0,7" Visibility="Collapsed">
           <Grid Margin="0,0,0,3">
@@ -293,13 +263,13 @@ function Apply-Theme([string]$name) {
         $gp.Fill = NewBrush $gssGreen
     }
 
-    $bars   = @('fivehBar','weekBar','sonBar','opusBar')
-    $labels = @('fivehLabel','weekLabel','sonLabel','opusLabel')
-    $subs   = @('fivehSub','weekSub','sonSub','opusSub')
-    $fgKeys = @('FivehFg','WeekFg','SonFg','OpusFg')
-    $bgKeys = @('FivehColors','WeekColors','SonColors','OpusColors')
+    $bars   = @('fivehBar','weekBar','opusBar')
+    $labels = @('fivehLabel','weekLabel','opusLabel')
+    $subs   = @('fivehSub','weekSub','opusSub')
+    $fgKeys = @('FivehFg','WeekFg','OpusFg')
+    $bgKeys = @('FivehColors','WeekColors','OpusColors')
 
-    for ($i = 0; $i -lt 4; $i++) {
+    for ($i = 0; $i -lt $bars.Count; $i++) {
         $b = $script:window.FindName($bars[$i])
         if ($b) { $b.Background = New-GradientBrush $t[$bgKeys[$i]][0] $t[$bgKeys[$i]][1] }
         $l = $script:window.FindName($labels[$i])
@@ -423,7 +393,6 @@ function Update-UI {
     if ($null -eq $d) {
         Set-Bar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $null $null
         Set-Bar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $null $null
-        Set-Bar 'sonBar'   'sonPct'   'sonSub'   'sonReset'   $null $null
         $time.Text = if ($script:State.Message) { $script:State.Message } else { 'connecting...' }
         return
     }
@@ -437,9 +406,6 @@ function Update-UI {
     Set-Bar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $d.seven_day.utilization         $d.seven_day.resets_at
     Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
-
-    Set-Bar 'sonBar'   'sonPct'   'sonSub'   'sonReset'   $d.seven_day_sonnet.utilization  $d.seven_day_sonnet.resets_at
-    if ($hasAlert) { Check-Alert 'seven_day_sonnet' $d.seven_day_sonnet.utilization }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible

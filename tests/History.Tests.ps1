@@ -16,7 +16,6 @@ Describe 'Add-HistorySample (ring buffer)' {
         $data = [PSCustomObject]@{
             five_hour        = [PSCustomObject]@{ utilization = 50.0 }
             seven_day        = [PSCustomObject]@{ utilization = 30.0 }
-            seven_day_sonnet = [PSCustomObject]@{ utilization = 20.0 }
             seven_day_opus   = $null
         }
         Add-HistorySample $data
@@ -30,7 +29,6 @@ Describe 'Add-HistorySample (ring buffer)' {
         $data = [PSCustomObject]@{
             five_hour        = [PSCustomObject]@{ utilization = 10.0 }
             seven_day        = $null
-            seven_day_sonnet = $null
             seven_day_opus   = $null
         }
         for ($i = 0; $i -lt 7; $i++) { Add-HistorySample $data }
