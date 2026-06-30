@@ -424,7 +424,7 @@ $xaml = @'
             </Grid>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <TextBlock x:Name="cursorSessLabel" Grid.Column="0" Text="SESSIONS"
+              <TextBlock x:Name="cursorSessLabel" Grid.Column="0" Text="AI LINES"
                          Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock x:Name="cursorSessText" Grid.Column="1" Text="--" Foreground="#94A3B8" FontSize="14" FontFamily="Consolas"/>
             </Grid>
@@ -753,7 +753,8 @@ function Update-CodexSection {
     $script:window.FindName('codexTokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
     $script:window.FindName('codexTodayText').Text = ('{0} tok' -f (Fmt-Tok $s.TodayTok))
     $script:window.FindName('codexSessText').Text  = ('{0} sessions  {1} msgs' -f $s.Sessions, (Fmt-Tok $s.Messages))
-    # codexModelText: model is per-session in the Codex stats contract, not aggregated.
+    $cm = $script:window.FindName('codexModelText')
+    if ($cm) { $cm.Text = if ($s.Model) { $s.Model } else { '--' } }
 }
 
 # ---------------------------------------------------------------------------
@@ -782,7 +783,8 @@ function Update-CursorSection {
         }
 
         $script:window.FindName('reqCount').Text = "$used / $limit"
-        $script:window.FindName('reqReset').Text = Format-Reset $d.startOfMonth
+        # billingCycleEnd is the real reset; startOfMonth is the cycle START (past) so it formats as "now"
+        $script:window.FindName('reqReset').Text = Format-Reset $script:SummaryData.billingCycleEnd
     } else {
         $script:window.FindName('reqBar').Width  = 0
         $script:window.FindName('reqCount').Text = '-- / --'
@@ -812,14 +814,18 @@ function Update-CursorSection {
         }
     }
 
-    # Local stats
+    # Edit/model stats from the Cursor analytics API (30-day rolling window)
     $l = $script:LocalData
     if ($l) {
-        $script:window.FindName('editsText').Text = ('{0} all-time' -f (Fmt-Num $l.total))
-        $script:window.FindName('cursorTodayText').Text = ('{0} edits' -f (Fmt-Num $l.today))
-        $mn = $l.topModel -replace 'claude-','cl-' -replace 'composer-','cmp-' -replace '-latest',''
-        $script:window.FindName('cursorModelText').Text = "$mn ($($l.topPct)%)"
-        $script:window.FindName('cursorSessText').Text  = ('{0} conversations' -f (Fmt-Num $l.convos))
+        $script:window.FindName('editsText').Text = ('{0} (30d)' -f (Fmt-Num $l.edits30d))
+        $script:window.FindName('cursorTodayText').Text = ('{0} edits' -f (Fmt-Num $l.editsToday))
+        if ($l.topModel) {
+            $mn = $l.topModel -replace 'claude-','cl-' -replace 'composer-','cmp-' -replace '-latest',''
+            $script:window.FindName('cursorModelText').Text = "$mn ($($l.topPct)%)"
+        } else {
+            $script:window.FindName('cursorModelText').Text = '--'
+        }
+        $script:window.FindName('cursorSessText').Text  = ('{0} lines' -f (Fmt-Num $l.linesAccepted))
     }
 }
 

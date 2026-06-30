@@ -160,6 +160,8 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
     $fiveHourResetsAt = $null
     $weekPct = $null
     $weekResetsAt = $null
+    $currentModel = $null
+    $latestModelDate = $null
 
     foreach ($r in $records) {
         $v = @{
@@ -175,6 +177,13 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         if ($r.Date.Date -eq $today.Date) {
             $tMsg++
             $tTok += [long]$r.In + [long]$r.Out
+        }
+
+        # Current model = the model of the most recent session that named one
+        # ('default' is the fallback for sessions with no turn_context).
+        if ($r.Model -and $r.Model -ne 'default' -and ((-not $latestModelDate) -or ($r.Date -gt $latestModelDate))) {
+            $latestModelDate = $r.Date
+            $currentModel = $r.Model
         }
     }
 
@@ -212,6 +221,7 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         FiveHourResetsAt = $fiveHourResetsAt
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
+        Model            = $currentModel
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }

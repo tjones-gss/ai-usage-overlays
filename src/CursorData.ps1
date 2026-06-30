@@ -105,61 +105,49 @@ function Get-CursorUsage {
 }
 
 # ---------------------------------------------------------------------------
-# Local stats from ai-code-tracking.db via sqlite3.exe
+# Edit/model stats from the Cursor dashboard analytics API.
+# Cursor stopped writing the local ai-code-tracking.db (ai_code_hashes) around
+# 2026-05-27 and serves these live from cursor.com instead. The endpoint is
+# user-scoped and returns a fixed ~30-day rolling window of per-day metrics.
+# (No web or live-local source exposes a conversation/session count anymore.)
 # ---------------------------------------------------------------------------
 function Get-CursorLocalStats {
-    if (-not (Test-Path $script:TrackingDb)) { return }
+    $tok, $userId, $email = Get-CursorToken
+    if (-not $tok -or -not $userId) { return }
+    $cookie = "WorkosCursorSessionToken=$([Uri]::EscapeDataString($userId + '::' + $tok))"
 
-    # Total edits
-    $rawTotal = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes"
-    if (-not $rawTotal) { return }
-    $total = 0
     try {
-        $totalRows = $rawTotal | ConvertFrom-Json
-        if ($totalRows -and $totalRows.cnt) { $total = [int]$totalRows.cnt }
+        $a = Invoke-RestMethod 'https://cursor.com/api/dashboard/get-user-analytics' `
+            -Headers @{ Cookie = $cookie } -TimeoutSec 20
     } catch { return }
+    if (-not $a -or -not $a.dailyMetrics) { return }
 
-    # Today edits (createdAt is milliseconds since epoch)
-    $rawToday = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(*) AS cnt FROM ai_code_hashes WHERE date(createdAt/1000,'unixepoch') = date('now')"
-    $todayCount = 0
-    try {
-        if ($rawToday) {
-            $todayRows = $rawToday | ConvertFrom-Json
-            if ($todayRows -and $null -ne $todayRows.cnt) { $todayCount = [int]$todayRows.cnt }
-        }
-    } catch { }
+    # date is UTC-midnight ms; match the bucket whose day == today (UTC).
+    $todayMs = [System.DateTimeOffset]::new([datetime]::UtcNow.Date, [TimeSpan]::Zero).ToUnixTimeMilliseconds()
 
-    # Top model
-    $rawModel = Invoke-Sqlite $script:TrackingDb "SELECT model, COUNT(*) AS c FROM ai_code_hashes GROUP BY model ORDER BY c DESC LIMIT 1"
-    $topModel = 'unknown'
-    $topPct   = 0
-    try {
-        if ($rawModel) {
-            $modelRow = $rawModel | ConvertFrom-Json
-            if ($modelRow -and $modelRow.model) {
-                $topModel = $modelRow.model
-                if ($total -gt 0) {
-                    $topPct = [int][Math]::Round([int]$modelRow.c * 100.0 / $total)
-                }
-            }
+    $edits30d = 0; $editsToday = 0; $linesAcc = 0
+    $models = @{}
+    foreach ($day in $a.dailyMetrics) {
+        $edits30d += [int]$day.totalApplies
+        $linesAcc += [int]$day.acceptedLinesAdded
+        if ([long]$day.date -eq $todayMs) { $editsToday = [int]$day.totalApplies }
+        foreach ($m in $day.modelUsage) {
+            if ($m.name) { $models[$m.name] = [int]$models[$m.name] + [int]$m.count }
         }
-    } catch { }
+    }
 
-    # Distinct conversations
-    $rawConvos = Invoke-Sqlite $script:TrackingDb "SELECT COUNT(DISTINCT conversationId) AS cnt FROM ai_code_hashes"
-    $convos = 0
-    try {
-        if ($rawConvos) {
-            $convoRows = $rawConvos | ConvertFrom-Json
-            if ($convoRows -and $null -ne $convoRows.cnt) { $convos = [int]$convoRows.cnt }
-        }
-    } catch { }
+    $topModel = $null; $topCount = 0; $totalModel = 0
+    foreach ($kv in $models.GetEnumerator()) {
+        $totalModel += $kv.Value
+        if ($kv.Value -gt $topCount) { $topCount = $kv.Value; $topModel = $kv.Key }
+    }
+    $topPct = if ($totalModel -gt 0) { [int][Math]::Round($topCount * 100.0 / $totalModel) } else { 0 }
 
     $script:LocalData = [PSCustomObject]@{
-        total    = $total
-        today    = $todayCount
-        topModel = $topModel
-        topPct   = $topPct
-        convos   = $convos
+        edits30d      = $edits30d
+        editsToday    = $editsToday
+        topModel      = $topModel
+        topPct        = $topPct
+        linesAccepted = $linesAcc
     }
 }
