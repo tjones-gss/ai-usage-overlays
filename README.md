@@ -7,7 +7,7 @@ Always-on-top Windows HUD that shows live usage stats for Claude Code, Codex, an
 ## What It Shows
 
 **Claude Code**
-- 5-hour session %, weekly limit %, Sonnet %, overage spend, lifetime tokens
+- 5-hour session %, weekly limit %, overage spend, lifetime tokens
 
 **Codex**
 - Local session tokens, estimated API-equivalent value, sessions, and today's activity
