@@ -8,6 +8,25 @@ function Write-Log {
     } catch { }  # never throw from a logger
 }
 
+# ---------------------------------------------------------------------------
+# Get-ScopedLimit — pulls a per-model weekly limit out of the API's limits[]
+# array by its scope display name (e.g. 'Fable') and returns an object shaped
+# like the legacy top-level seven_day_* fields so the UI can consume it
+# uniformly. Returns $null when the model isn't present.
+# ---------------------------------------------------------------------------
+function Get-ScopedLimit([object]$resp, [string]$displayName) {
+    if (-not $resp.limits) { return $null }
+    foreach ($lim in $resp.limits) {
+        if ($lim.scope.model.display_name -eq $displayName) {
+            return [PSCustomObject]@{
+                utilization = [double]$lim.percent
+                resets_at   = $lim.resets_at
+            }
+        }
+    }
+    return $null
+}
+
 function Get-Usage {
     $tok = $null
     try { $tok = (Get-Content $script:CredPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch {
@@ -18,6 +37,11 @@ function Get-Usage {
         $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec 20 -Headers @{
             Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
         }
+        # Fable (and future per-model caps) live in the limits[] array as
+        # weekly_scoped entries, not as top-level seven_day_* fields. Surface
+        # Fable under the legacy field shape so the rest of the app is uniform.
+        $fable = Get-ScopedLimit $resp 'Fable'
+        $resp | Add-Member -NotePropertyName seven_day_fable -NotePropertyValue $fable -Force
         $script:State.Data = $resp; $script:State.Status = 'ok'
         $script:State.Message = ''; $script:State.LastFetch = (Get-Date -Format 'HH:mm')
         # Record to history ring buffer

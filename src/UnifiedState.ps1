@@ -165,6 +165,7 @@ function Copy-Stats {
     if ($d) {
         $lines += "Claude 5-hour: $([math]::Round(100 - [double]$d.five_hour.utilization))% remaining ($(Format-Reset $d.five_hour.resets_at))"
         $lines += "Claude weekly: $([math]::Round(100 - [double]$d.seven_day.utilization))% remaining ($(Format-Reset $d.seven_day.resets_at))"
+        if ($d.seven_day_fable)  { $lines += "Claude Fable: $([math]::Round(100 - [double]$d.seven_day_fable.utilization))% remaining" }
         if ($d.seven_day_opus)   { $lines += "Claude Opus: $([math]::Round(100 - [double]$d.seven_day_opus.utilization))% remaining" }
     }
 
