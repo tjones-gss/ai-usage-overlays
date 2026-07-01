@@ -172,6 +172,16 @@ $xaml = @'
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
+            <!-- Sparkline history graphs (collapsed unless ShowGraph is enabled) -->
+            <StackPanel x:Name="sparkRow" Visibility="Collapsed" Margin="0,4,0,0">
+              <Canvas x:Name="fivehSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left" Margin="0,0,0,3">
+                <Polyline x:Name="fivehSpark" Stroke="#38BDF8" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+              <Canvas x:Name="weekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
+                <Polyline x:Name="weekSpark" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
+
             <Border Height="1" Background="{StaticResource Divider}" Margin="0,4,0,8"/>
 
             <!-- Stats -->
@@ -446,6 +456,39 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
 }
 
 # ---------------------------------------------------------------------------
+# Set-Spark - renders a sparkline polyline onto a named Canvas
+# ---------------------------------------------------------------------------
+function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey) {
+    $spark  = $script:window.FindName($sparkName)
+    $canvas = $script:window.FindName($canvasName)
+    if (-not $spark -or -not $canvas) { return }
+    $spark.Points.Clear()
+
+    $samples = $script:History
+    if ($null -eq $samples -or $samples.Count -lt 2) { return }
+
+    # Filter to samples with a value for this metric
+    $valid = @($samples | Where-Object { $null -ne $_.$metricKey })
+    if ($valid.Count -lt 2) { return }
+
+    # X: time range; Y: utilization 0-100 mapped to canvas height (inverted: 0% at bottom, 100% at top)
+    $w = $canvas.Width
+    $h = $canvas.Height
+
+    $t0 = [System.DateTimeOffset]::Parse($valid[0].t)
+    $t1 = [System.DateTimeOffset]::Parse($valid[-1].t)
+    $tRange = ($t1 - $t0).TotalSeconds
+    if ($tRange -le 0) { return }
+
+    foreach ($s in $valid) {
+        $tSec = ([System.DateTimeOffset]::Parse($s.t) - $t0).TotalSeconds
+        $x = [double]($tSec / $tRange) * $w
+        $y = $h - ([math]::Max(0, [math]::Min(100, [double]($s.$metricKey))) / 100.0 * $h)
+        [void]$spark.Points.Add([System.Windows.Point]::new($x, $y))
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Apply-UnifiedTheme - applies $script:Themes[$name] across the chrome and all
 # three sections. Mirrors Ui.ps1 Apply-Theme; extends to codex/cursor. Greyscale-safe.
 # ---------------------------------------------------------------------------
@@ -489,6 +532,12 @@ function Apply-UnifiedTheme([string]$name) {
     if ($rb -and $t.FivehColors) { $rb.Background = New-GradientBrush $t.FivehColors[0] $t.FivehColors[1] }
     $rl = $script:window.FindName('reqLabel')
     if ($rl -and $t.FivehFg) { $rl.Foreground = NewBrush $t.FivehFg }
+
+    # Sparkline strokes
+    $fivehSpark = $script:window.FindName('fivehSpark')
+    if ($fivehSpark -and $t.FivehFg) { $fivehSpark.Stroke = NewBrush $t.FivehFg }
+    $weekSpark = $script:window.FindName('weekSpark')
+    if ($weekSpark -and $t.WeekFg) { $weekSpark.Stroke = NewBrush $t.WeekFg }
 
     # Accent stripe
     $stripe = $script:window.FindName('accentStripe')
@@ -609,8 +658,8 @@ function Toggle-Section([string]$key) {
 }
 
 # ---------------------------------------------------------------------------
-# Update-ClaudeSection - ports Ui.ps1 Update-UI body (bars + stats), minus the
-# chrome dot/time (now global) and sparklines. Reads $script:State/$script:Stats.
+# Update-ClaudeSection - ports Ui.ps1 Update-UI body (bars, stats, sparklines),
+# minus the chrome dot/time (now global). Reads $script:State/$script:Stats.
 # ---------------------------------------------------------------------------
 function Update-ClaudeSection {
     $s = $script:Stats
@@ -631,9 +680,11 @@ function Update-ClaudeSection {
     $hasAlert = [bool](Get-Command Check-Alert -ErrorAction SilentlyContinue)
 
     Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at
+    Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour'
     if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
     Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at
+    Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
     if ($d.seven_day_opus) {

@@ -7,6 +7,86 @@ if (-not $script:CodexSessionsDir) {
 $script:CodexStats = $null
 $script:CodexStatsFileCache = @{}
 
+function Convert-CodexCacheDate {
+    param($Value)
+
+    if (-not $Value) { return $null }
+    if ($Value -is [datetime]) { return $Value }
+
+    try {
+        return [System.DateTimeOffset]::Parse([string]$Value).LocalDateTime
+    } catch {
+        return $null
+    }
+}
+
+function Convert-CodexCacheRecords {
+    param($Records)
+
+    $converted = [System.Collections.Generic.List[object]]::new()
+    if (-not $Records) { return $converted }
+
+    foreach ($r in @($Records)) {
+        $date = Convert-CodexCacheDate $r.Date
+        if (-not $date) { continue }
+
+        $converted.Add(@{
+            Model     = [string]$r.Model
+            Date      = $date
+            In        = [long]$r.In
+            CachedIn  = [long]$r.CachedIn
+            Out       = [long]$r.Out
+            SessionId = [string]$r.SessionId
+        })
+    }
+
+    return $converted
+}
+
+function Import-CodexStatsFileCache {
+    param([string]$CachePath)
+
+    if (-not $CachePath -or -not (Test-Path $CachePath)) { return }
+
+    try {
+        $raw = Get-Content $CachePath -Raw -Encoding UTF8 -ErrorAction Stop
+        if (-not $raw) { return }
+
+        $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        $loaded = @{}
+
+        foreach ($prop in $json.PSObject.Properties) {
+            $entry = $prop.Value
+            if (-not $entry -or -not $entry.Stamp) { continue }
+
+            $loaded[$prop.Name] = @{
+                Stamp         = [string]$entry.Stamp
+                Records       = Convert-CodexCacheRecords $entry.Records
+                LastTokenDate = Convert-CodexCacheDate $entry.LastTokenDate
+                RateLimits    = $entry.RateLimits
+            }
+        }
+
+        $script:CodexStatsFileCache = $loaded
+    } catch {
+        Write-CodexLog "Get-CodexStats: failed to load cache $CachePath - $($_.Exception.Message)"
+    }
+}
+
+function Export-CodexStatsFileCache {
+    param([string]$CachePath)
+
+    if (-not $CachePath) { return }
+
+    try {
+        $script:CodexStatsFileCache |
+            ConvertTo-Json -Depth 12 |
+            Set-Content -Path $CachePath -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        Write-CodexLog "Get-CodexStats: failed to save cache $CachePath - $($_.Exception.Message)"
+    }
+}
+
 function Write-CodexLog {
     param([string]$Message)
     if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
@@ -147,6 +227,9 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
 }
 
 function Get-CodexStats {
+    $cachePath = Join-Path $script:AppDir 'codex-cache.json'
+    Import-CodexStatsFileCache $cachePath
+
     if (-not (Test-Path $script:CodexSessionsDir)) {
         Write-CodexLog 'Get-CodexStats: ~/.codex/sessions not found - no session data'
         return
@@ -162,12 +245,14 @@ function Get-CodexStats {
     $allRecords = [System.Collections.Generic.List[object]]::new()
     $latestRateLimits = $null
     $latestTokenDate = $null
+    $activeCache = @{}
 
     foreach ($file in $files) {
         $stamp = "$($file.LastWriteTimeUtc.Ticks):$($file.Length)"
         $cached = $script:CodexStatsFileCache[$file.FullName]
 
         if ($cached -and $cached.Stamp -eq $stamp) {
+            $activeCache[$file.FullName] = $cached
             foreach ($r in $cached.Records) {
                 $allRecords.Add($r)
             }
@@ -267,7 +352,7 @@ function Get-CodexStats {
             }
         }
 
-        $script:CodexStatsFileCache[$file.FullName] = @{
+        $activeCache[$file.FullName] = @{
             Stamp         = $stamp
             Records       = $fileRecords
             LastTokenDate = $fileTokenDate
@@ -278,6 +363,9 @@ function Get-CodexStats {
             $allRecords.Add($r)
         }
     }
+
+    $script:CodexStatsFileCache = $activeCache
+    Export-CodexStatsFileCache $cachePath
 
     try {
         $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
