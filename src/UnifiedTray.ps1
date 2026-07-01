@@ -177,11 +177,67 @@ function Add-Separator {
 }
 
 # ---------------------------------------------------------------------------
+# Threshold alert system
+# ---------------------------------------------------------------------------
+$script:Notified = @{ five_hour = 0; seven_day = 0; seven_day_fable = 0; seven_day_opus = 0 }
+
+function Check-Alert([string]$key, $util) {
+    if (-not [bool]$script:Cfg.ShowAlerts) { return }
+    if (-not $script:notify) { return }
+    if ($null -eq $util) { return }
+
+    $u    = [double]$util
+    $last = if ($script:Notified.ContainsKey($key)) { $script:Notified[$key] } else { 0 }
+
+    # Reset when usage drops back below warn threshold
+    if ($u -lt $script:WarnPct) {
+        $script:Notified[$key] = 0
+        return
+    }
+
+    # Fire CRITICAL alert (crosses into CritPct band)
+    if ($u -ge $script:CritPct -and $last -lt $script:CritPct) {
+        $label = switch ($key) {
+            'five_hour'        { '5-hour session' }
+            'seven_day'        { 'Weekly limit' }
+            'seven_day_fable'  { 'Fable weekly' }
+            'seven_day_opus'   { 'Opus weekly' }
+            default            { $key }
+        }
+        $eta = ''
+        if ($script:History -and $script:History.Count -gt 2) {
+            $mins = Get-Eta $script:History $key
+            if ($null -ne $mins) { $eta = " (~$mins min to limit)" }
+        }
+        $script:notify.ShowBalloonTip(5000, 'Claude Usage Critical', "$label at $([int]$u)%$eta", [System.Windows.Forms.ToolTipIcon]::Warning)
+        $script:Notified[$key] = $script:CritPct
+        return
+    }
+
+    # Fire WARN alert (crosses into WarnPct band)
+    if ($u -ge $script:WarnPct -and $last -lt $script:WarnPct) {
+        $label = switch ($key) {
+            'five_hour'        { '5-hour session' }
+            'seven_day'        { 'Weekly limit' }
+            'seven_day_fable'  { 'Fable weekly' }
+            'seven_day_opus'   { 'Opus weekly' }
+            default            { $key }
+        }
+        $script:notify.ShowBalloonTip(4000, 'Claude Usage Warning', "$label at $([int]$u)%", [System.Windows.Forms.ToolTipIcon]::Info)
+        $script:Notified[$key] = $script:WarnPct
+        return
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Context menu items
 # ---------------------------------------------------------------------------
 
 # Actions
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now' { Get-Usage; Get-Stats; Get-CodexStats; Get-CursorUsage; Get-CursorLocalStats; Update-AllSections }))
+Add-Separator
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
 Add-Separator
 
 # Sections
@@ -230,6 +286,33 @@ foreach ($tname in $script:Themes.Keys) {
 [void]$script:ctxStrip.Items.Add($miTheme)
 Add-Separator
 
+# Toggles
+$miStats = New-StripItem 'Show stats panel' {
+    $script:Cfg.ShowStats = -not [bool]$script:Cfg.ShowStats
+    $miStats.Checked = [bool]$script:Cfg.ShowStats
+    Apply-UnifiedSettings; Save-UnifiedState
+}
+$miStats.Checked = [bool]$script:Cfg.ShowStats
+[void]$script:ctxStrip.Items.Add($miStats)
+
+$miAlerts = New-StripItem 'Threshold alerts' {
+    $script:Cfg.ShowAlerts = -not [bool]$script:Cfg.ShowAlerts
+    $miAlerts.Checked = [bool]$script:Cfg.ShowAlerts
+    Save-UnifiedState
+}
+$miAlerts.Checked = [bool]$script:Cfg.ShowAlerts
+[void]$script:ctxStrip.Items.Add($miAlerts)
+
+$miGraph = New-StripItem 'Show history graph' {
+    $script:Cfg.ShowGraph = -not [bool]$script:Cfg.ShowGraph
+    $miGraph.Checked = [bool]$script:Cfg.ShowGraph
+    Apply-UnifiedSettings; Save-UnifiedState
+    Update-AllSections
+}
+$miGraph.Checked = [bool]$script:Cfg.ShowGraph
+[void]$script:ctxStrip.Items.Add($miGraph)
+Add-Separator
+
 # Login
 $script:miLogin = New-StripItem 'Open at login' {
     if (Test-Autostart) { Uninstall-Autostart } else { Install-Autostart }
@@ -237,9 +320,18 @@ $script:miLogin = New-StripItem 'Open at login' {
 }
 $script:miLogin.Checked = (Test-Autostart)
 [void]$script:ctxStrip.Items.Add($script:miLogin)
+
+$miSH = New-StripItem 'Start hidden to tray' {
+    $script:Cfg.StartHidden = -not [bool]$script:Cfg.StartHidden
+    $miSH.Checked = [bool]$script:Cfg.StartHidden
+    Save-UnifiedState
+}
+$miSH.Checked = [bool]$script:Cfg.StartHidden
+[void]$script:ctxStrip.Items.Add($miSH)
 Add-Separator
 
 # Window
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Minimize to tray' { $script:window.Hide() }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Quit' { Quit-App }))
 
 # ---------------------------------------------------------------------------
