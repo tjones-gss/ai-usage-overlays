@@ -53,6 +53,34 @@ function Start-HiddenBackground {
     )
 }
 
+function Stop-ExistingInstance {
+    $scriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
+
+    if (Test-Path $script:PidPath) {
+        try {
+            $oldPid = [int](Get-Content $script:PidPath -Raw)
+            if ($oldPid -ne $PID) {
+                $old = Get-CimInstance Win32_Process -Filter "ProcessId=$oldPid" -ErrorAction SilentlyContinue
+                if ($old -and $old.CommandLine -like "*$scriptPath*") {
+                    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Milliseconds 500
+                }
+            }
+        } catch { }
+        Remove-Item $script:PidPath -Force -ErrorAction SilentlyContinue
+    }
+
+    Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.ProcessId -ne $PID -and
+            $_.CommandLine -like "*$scriptPath*" -and
+            $_.CommandLine -like '*-Background*'
+        } |
+        ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+}
+
 function Install-Autostart {
     $ws = New-Object -ComObject WScript.Shell
     $sc = $ws.CreateShortcut($script:LnkPath)
@@ -68,6 +96,7 @@ function Test-Autostart      { Test-Path $script:LnkPath }
 if ($Uninstall) { Uninstall-Autostart; Write-Host 'Removed login auto-start.'; return }
 if ($Install) {
     Install-Autostart
+    Stop-ExistingInstance
     Start-HiddenBackground
     Write-Host 'Installed. Unified overlay is running.'
     return
@@ -341,6 +370,7 @@ $script:tickTimer.Interval = [TimeSpan]::FromSeconds(30)
 $script:tickTimer.add_Tick({ Update-AllSections })
 
 function Show-UnifiedWindowWhenRendered {
+    Resize-ToContent
     $script:window.Opacity = 0
     $script:window.add_ContentRendered({
         $opacity = 1.0
@@ -350,6 +380,8 @@ function Show-UnifiedWindowWhenRendered {
         $script:window.Opacity = $opacity
     })
     $script:window.Show()
+    Resize-ToContent
+    if (-not $script:Positioned) { Position-Window } else { Clamp-Position }
 }
 
 # Build-And-Show: retry window Show() until the DWM compositor is ready.

@@ -109,6 +109,22 @@ Describe 'Measure-CodexStats' {
         $s.TodayMsg | Should -Be 2
         $s.TodayTok | Should -Be 375
     }
+
+    It 'counts Codex turns separately from session files' {
+        $today = [datetime]'2026-06-10'
+        $records = @(
+            @{
+                Model='gpt-5.5'; Date=[datetime]'2026-06-10'; In=500L; CachedIn=0L; Out=100L; SessionId='s1'
+                MessageDates=@([datetime]'2026-06-09T23:00:00', [datetime]'2026-06-10T10:00:00', [datetime]'2026-06-10T11:00:00')
+            }
+        )
+
+        $s = Measure-CodexStats $records $today
+
+        $s.Sessions | Should -Be 1
+        $s.Messages | Should -Be 3
+        $s.TodayMsg | Should -Be 2
+    }
 }
 
 Describe 'Estimate-CodexCost' {
@@ -156,9 +172,9 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.InTokens  | Should -Be 300
         $script:CodexStats.OutTokens | Should -Be 70
         $script:CodexStats.ValueUSD  | Should -Be 0.003375
-        $script:CodexStats.Messages  | Should -Be 1
+        $script:CodexStats.Messages  | Should -Be 2
         $script:CodexStats.Sessions  | Should -Be 1
-        $script:CodexStats.TodayMsg  | Should -Be 1
+        $script:CodexStats.TodayMsg  | Should -Be 2
         $script:CodexStats.TodayTok  | Should -Be 370
         $script:CodexStats.ValueUSD  | Should -BeGreaterThan 0
     }
@@ -211,6 +227,25 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.OutTokens | Should -Be 100
         $script:CodexStats.ValueUSD  | Should -Be 0.006875
         $script:CodexStats.Sessions  | Should -Be 1
+    }
+
+    It 'counts sessions that have turns but no token usage yet' {
+        $baseTime = (Get-Date).Date.AddHours(9)
+        $tsMeta = New-TestTimestamp $baseTime
+        $tsTurn = New-TestTimestamp ($baseTime.AddMinutes(1))
+
+        Write-CodexFixture '2026\06\10\no-usage-test.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='no-usage'; timestamp=$tsMeta } }
+            @{ timestamp=$tsTurn; type='turn_context'; payload=@{ model='gpt-5.5' } }
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.Sessions  | Should -Be 1
+        $script:CodexStats.Messages  | Should -Be 1
+        $script:CodexStats.InTokens  | Should -Be 0
+        $script:CodexStats.OutTokens | Should -Be 0
+        $script:CodexStats.ValueUSD  | Should -Be 0
     }
 
     It 'tolerates a missing sessions directory' {

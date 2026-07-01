@@ -126,16 +126,16 @@ function Get-WorkArea {
 
 function Clamp-Position {
     $wa = Get-WorkArea
-    $w  = $script:window.ActualWidth
-    $h  = $script:window.ActualHeight
+    $w  = if ($script:window.ActualWidth  -gt 0) { $script:window.ActualWidth  } else { $script:window.Width }
+    $h  = if ($script:window.ActualHeight -gt 0) { $script:window.ActualHeight } else { $script:window.Height }
     $script:window.Left = [math]::Max($wa.Left, [math]::Min($script:window.Left, $wa.Right  - $w))
     $script:window.Top  = [math]::Max($wa.Top,  [math]::Min($script:window.Top,  $wa.Bottom - $h))
 }
 
 function Snap-ToCorner([string]$corner) {
     $wa = Get-WorkArea
-    $w  = $script:window.ActualWidth
-    $h  = $script:window.ActualHeight
+    $w  = if ($script:window.ActualWidth  -gt 0) { $script:window.ActualWidth  } else { $script:window.Width }
+    $h  = if ($script:window.ActualHeight -gt 0) { $script:window.ActualHeight } else { $script:window.Height }
     switch ($corner) {
         'TR' { $script:window.Left = $wa.Right - $w - 16; $script:window.Top = $wa.Top    + 16 }
         'TL' { $script:window.Left = $wa.Left  + 16;      $script:window.Top = $wa.Top    + 16 }
@@ -148,6 +148,7 @@ function Snap-ToCorner([string]$corner) {
 function Position-Window {
     if ($script:Positioned) { return }
     $script:Positioned = $true
+    Resize-ToContent
     if ($null -ne $script:Cfg.Left) {
         $script:window.Left = [double]$script:Cfg.Left
         $script:window.Top  = [double]$script:Cfg.Top
@@ -178,7 +179,7 @@ function Copy-Stats {
         $cs = $script:CodexStats
         $lines += "Codex est. API value: ~$(Fmt-Money $cs.ValueUSD) all-time"
         $lines += "Codex tokens: $(Fmt-Tok $cs.InTokens) in / $(Fmt-Tok $cs.OutTokens) out"
-        $lines += "Codex lifetime: $($cs.Sessions) sessions / $(Fmt-Tok $cs.Messages) events"
+        $lines += "Codex lifetime: $($cs.Sessions) sessions / $(Fmt-Tok $cs.Messages) msgs"
     }
 
     if ($script:LocalData) {
