@@ -16,12 +16,14 @@ Describe 'Add-HistorySample (ring buffer)' {
         $data = [PSCustomObject]@{
             five_hour        = [PSCustomObject]@{ utilization = 50.0 }
             seven_day        = [PSCustomObject]@{ utilization = 30.0 }
+            seven_day_fable  = [PSCustomObject]@{ utilization = 20.0 }
             seven_day_opus   = $null
         }
         Add-HistorySample $data
         $script:History.Count | Should -Be 1
         $script:History[0].five_hour  | Should -Be 50.0
         $script:History[0].seven_day  | Should -Be 30.0
+        $script:History[0].seven_day_fable | Should -Be 20.0
         $script:History[0].seven_day_opus | Should -BeNullOrEmpty
     }
     It 'trims to HistoryMaxLen when exceeded' {
@@ -29,6 +31,7 @@ Describe 'Add-HistorySample (ring buffer)' {
         $data = [PSCustomObject]@{
             five_hour        = [PSCustomObject]@{ utilization = 10.0 }
             seven_day        = $null
+            seven_day_fable  = $null
             seven_day_opus   = $null
         }
         for ($i = 0; $i -lt 7; $i++) { Add-HistorySample $data }

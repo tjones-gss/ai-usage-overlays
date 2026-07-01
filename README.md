@@ -8,6 +8,7 @@ Always-on-top Windows HUD for Claude Code usage. Shows live limits from `claude.
 
 - **5-hour session** — % used with time-to-reset countdown
 - **Weekly limit** — % used with days-to-reset
+- **Fable weekly** — % used, the weekly cap for the Fable model
 - **Opus weekly** — shown only when you have Opus usage
 - **Est. cost** — API-equivalent value of all usage (informational; not charged on flat-rate plans)
 - **Overage** — real spend beyond your plan limit, if usage-based billing is enabled
