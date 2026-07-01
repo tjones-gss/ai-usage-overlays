@@ -66,6 +66,7 @@ function Copy-Stats {
     if ($d) {
         $lines += "5-hour:  $([math]::Round(100-[double]$d.five_hour.utilization))% remaining  ($(Format-Reset $d.five_hour.resets_at))"
         $lines += "Weekly:  $([math]::Round(100-[double]$d.seven_day.utilization))% remaining  ($(Format-Reset $d.seven_day.resets_at))"
+        if ($d.seven_day_fable)  { $lines += "Fable:   $([math]::Round(100-[double]$d.seven_day_fable.utilization))% remaining" }
         if ($d.seven_day_opus)   { $lines += "Opus:    $([math]::Round(100-[double]$d.seven_day_opus.utilization))% remaining" }
     }
     if ($s) {

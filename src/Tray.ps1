@@ -88,7 +88,7 @@ function Add-Separator {
 # ---------------------------------------------------------------------------
 # Threshold alert system
 # ---------------------------------------------------------------------------
-$script:Notified = @{ five_hour = 0; seven_day = 0; seven_day_opus = 0 }
+$script:Notified = @{ five_hour = 0; seven_day = 0; seven_day_fable = 0; seven_day_opus = 0 }
 
 function Check-Alert([string]$key, $util) {
     if (-not [bool]$script:Cfg.ShowAlerts) { return }
@@ -109,6 +109,7 @@ function Check-Alert([string]$key, $util) {
         $label = switch ($key) {
             'five_hour'        { '5-hour session' }
             'seven_day'        { 'Weekly limit' }
+            'seven_day_fable'  { 'Fable weekly' }
             'seven_day_opus'   { 'Opus weekly' }
             default            { $key }
         }
@@ -127,6 +128,7 @@ function Check-Alert([string]$key, $util) {
         $label = switch ($key) {
             'five_hour'        { '5-hour session' }
             'seven_day'        { 'Weekly limit' }
+            'seven_day_fable'  { 'Fable weekly' }
             'seven_day_opus'   { 'Opus weekly' }
             default            { $key }
         }
