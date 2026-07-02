@@ -317,6 +317,12 @@ $xaml = @'
 
             <Grid Margin="0,0,0,2">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="codexValText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
+            </Grid>
+            <Grid Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexTokText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
@@ -327,15 +333,9 @@ $xaml = @'
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexTodayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="MODEL" Foreground="#7BA8C8"
-                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" x:Name="codexModelText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
-            </Grid>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="SESSIONS" Foreground="#7BA8C8"
+              <TextBlock Grid.Column="0" Text="LIFETIME" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexSessText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
             </Grid>
@@ -618,6 +618,17 @@ function Set-SectionVisible([string]$key, [bool]$visible) {
 # ---------------------------------------------------------------------------
 function Measure-ContentHeight {
     $root = $script:window
+    $content = $root.Content
+    if ($content) {
+        $content.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+        $size = $content.DesiredSize
+        if ($size.Width -gt 0 -and $size.Height -gt 0) {
+            $content.Arrange([System.Windows.Rect]::new(0, 0, $size.Width, $size.Height))
+            $root.UpdateLayout()
+            return $size
+        }
+    }
+
     $root.UpdateLayout()
     $root.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
     return $root.DesiredSize
@@ -633,6 +644,7 @@ function Resize-ToContent {
     $size = Measure-ContentHeight
     if ($size.Width  -gt 0) { $root.Width  = $size.Width }
     if ($size.Height -gt 0) { $root.Height = $size.Height }
+    $root.UpdateLayout()
 }
 
 # ---------------------------------------------------------------------------
@@ -746,15 +758,17 @@ function Update-CodexSection {
         Set-SectionBar 'codexFiveBar' 'codexFivePct' 'codexFiveSub' 'codexFiveReset' $null $null
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
+        $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
+        $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
+        $cs = $script:window.FindName('codexSessText'); if ($cs) { $cs.Text = '--' }
         return
     }
     Set-SectionBar 'codexFiveBar' 'codexFivePct' 'codexFiveSub' 'codexFiveReset' $s.FiveHourPct $s.FiveHourResetsAt
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
+    $script:window.FindName('codexValText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
     $script:window.FindName('codexTokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
-    $script:window.FindName('codexTodayText').Text = ('{0} tok' -f (Fmt-Tok $s.TodayTok))
+    $script:window.FindName('codexTodayText').Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayTok), $s.TodayMsg)
     $script:window.FindName('codexSessText').Text  = ('{0} sessions  {1} msgs' -f $s.Sessions, (Fmt-Tok $s.Messages))
-    $cm = $script:window.FindName('codexModelText')
-    if ($cm) { $cm.Text = if ($s.Model) { $s.Model } else { '--' } }
 }
 
 # ---------------------------------------------------------------------------

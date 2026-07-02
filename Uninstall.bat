@@ -5,7 +5,7 @@ REM ============================================================
 echo Removing login auto-start...
 where pwsh >nul 2>nul
 if errorlevel 1 (
-    echo PowerShell 7 (pwsh) is required.
+    echo PowerShell 7 ^(pwsh^) is required.
     echo.
     pause
     exit /b 1

@@ -14,7 +14,7 @@ function Wire-UnifiedWindowEvents {
         }
         Save-UnifiedState
     })
-    $script:window.Add_Loaded({ Position-Window })
+    $script:window.Add_Loaded({ Resize-ToContent; Position-Window })
     $script:window.Add_Closing({ param($s, $e) if (-not $script:ReallyQuit) { $e.Cancel = $true; $script:window.Hide() } })
     $script:window.Add_MouseRightButtonUp({
         $pt = [System.Windows.Forms.Control]::MousePosition
