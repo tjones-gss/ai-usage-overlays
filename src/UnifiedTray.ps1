@@ -44,10 +44,30 @@ function Quit-App {
     if ($script:pollTimer) { $script:pollTimer.Stop() }
     if ($script:tickTimer) { $script:tickTimer.Stop() }
     if ($script:jobTimer)  { $script:jobTimer.Stop() }
-    if ($script:pollJob)   { Remove-Job $script:pollJob -Force -ErrorAction SilentlyContinue; $script:pollJob = $null }
+    if ($script:pollJobs) {
+        foreach ($job in @($script:pollJobs.Values)) {
+            Remove-Job $job -Force -ErrorAction SilentlyContinue
+        }
+        $script:pollJobs.Clear()
+    }
     if ($script:notify)    { $script:notify.Visible = $false; $script:notify.Dispose() }
     $script:window.Close()
     $script:window.Dispatcher.InvokeShutdown()
+}
+
+function Invoke-ManualRefresh {
+    if ($script:State) {
+        $script:State.Status = 'refreshing'
+        $script:State.Message = 'refreshing...'
+    }
+
+    Start-AllRefreshJobs
+
+    if ($script:jobTimer -and -not $script:jobTimer.IsEnabled) {
+        $script:jobTimer.Start()
+    }
+
+    Update-AllSections
 }
 
 # ---------------------------------------------------------------------------
@@ -234,7 +254,7 @@ function Check-Alert([string]$key, $util) {
 # ---------------------------------------------------------------------------
 
 # Actions
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now' { Get-Usage; Get-Stats; Get-CodexStats; Get-CursorUsage; Get-CursorLocalStats; Update-AllSections }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now' { Invoke-ManualRefresh }))
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
