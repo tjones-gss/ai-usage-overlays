@@ -4,6 +4,7 @@ BeforeAll {
     $root = Split-Path $PSScriptRoot -Parent
     . (Join-Path $root 'src\Config.ps1')   # needed for $script:AppDir etc.
     . (Join-Path $root 'src\Format.ps1')   # defines Format-Reset, Fmt-Tok, Fmt-Money, Remaining-Color
+    $script:ResetPattern = [regex]::Escape([string][char]0x21BA)
 }
 
 Describe 'Format-Reset' {
@@ -17,25 +18,25 @@ Describe 'Format-Reset' {
     }
     It 'returns minutes format for < 1 hour' {
         $future = (Get-Date).AddMinutes(15) | Get-Date -Format 'o'
-        Format-Reset $future | Should -Match '^\↺ \d+m$'
+        Format-Reset $future | Should -Match "^$script:ResetPattern \d+m$"
     }
     It 'returns hours+minutes format for 1-24 hours' {
         $future = (Get-Date).AddHours(2).AddMinutes(30) | Get-Date -Format 'o'
-        Format-Reset $future | Should -Match '^\↺ \d+h\d{2}m$'
+        Format-Reset $future | Should -Match "^$script:ResetPattern \d+h\d{2}m$"
     }
     It 'floors the hours component (does not round up)' {
-        # 1h40m remaining must show 1h, not 2h — guards against [int] banker-rounding
+        # 1h40m remaining must show 1h, not 2h - guards against [int] banker-rounding
         $future = (Get-Date).AddHours(1).AddMinutes(40) | Get-Date -Format 'o'
-        Format-Reset $future | Should -Match '^\↺ 1h\d{2}m$'
+        Format-Reset $future | Should -Match "^$script:ResetPattern 1h\d{2}m$"
     }
     It 'returns days+hours format for >= 1 day' {
         $future = (Get-Date).AddDays(2).AddHours(3) | Get-Date -Format 'o'
-        Format-Reset $future | Should -Match '^\↺ \d+d \d+h$'
+        Format-Reset $future | Should -Match "^$script:ResetPattern \d+d \d+h$"
     }
     It 'floors the days component (does not round up)' {
         # 2d18h remaining must show 2d, not 3d
         $future = (Get-Date).AddDays(2).AddHours(18) | Get-Date -Format 'o'
-        Format-Reset $future | Should -Match '^\↺ 2d \d+h$'
+        Format-Reset $future | Should -Match "^$script:ResetPattern 2d \d+h$"
     }
     It 'returns empty string for invalid ISO string' {
         Format-Reset 'not-a-date' | Should -Be ''

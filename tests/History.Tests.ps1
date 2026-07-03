@@ -65,14 +65,14 @@ Describe 'Get-Eta' {
         $samples = 0..4 | ForEach-Object {
             [PSCustomObject]@{
                 t         = $now.AddMinutes($_ * 5 - 20) | Get-Date -Format 'o'
-                five_hour = 80.0 - ($_ * 5)  # 80, 75, 70, 65, 60 — decreasing over time
+                five_hour = 80.0 - ($_ * 5)  # 80, 75, 70, 65, 60 - decreasing over time
             }
         }
         Get-Eta $samples 'five_hour' | Should -BeNullOrEmpty
     }
     It 'returns positive minutes for clearly rising data' {
         $now = Get-Date
-        # Rising from 10% to 50% over 40 minutes — ETA should be well-defined
+        # Rising from 10% to 50% over 40 minutes - ETA should be well-defined
         $samples = 0..4 | ForEach-Object {
             [PSCustomObject]@{
                 t         = $now.AddMinutes($_ * 10 - 40) | Get-Date -Format 'o'
@@ -85,7 +85,7 @@ Describe 'Get-Eta' {
     }
     It 'returns $null when ETA is more than 24 hours away' {
         $now = Get-Date
-        # Very slow rise: 0% to 1% over 60 min — would take hundreds of hours
+        # Very slow rise: 0% to 1% over 60 min - would take hundreds of hours
         $samples = 0..4 | ForEach-Object {
             [PSCustomObject]@{
                 t         = $now.AddMinutes($_ * 15 - 60) | Get-Date -Format 'o'

@@ -1,7 +1,7 @@
-# UnifiedTray.ps1 — unified system tray icon and dark context menu
+# UnifiedTray.ps1 - unified system tray icon and dark context menu
 
 # ---------------------------------------------------------------------------
-# Window events — wired per window instance (called by Build-And-Show on each build)
+# Window events - wired per window instance (called by Build-And-Show on each build)
 # ---------------------------------------------------------------------------
 function Wire-UnifiedWindowEvents {
     $script:window.Add_MouseLeftButtonDown({
@@ -71,7 +71,7 @@ function Invoke-ManualRefresh {
 }
 
 # ---------------------------------------------------------------------------
-# Right-click context menu — dark-themed WinForms ContextMenuStrip shown
+# Right-click context menu - dark-themed WinForms ContextMenuStrip shown
 # from the WPF panel's MouseRightButtonUp event.
 # ---------------------------------------------------------------------------
 $script:themeItems   = @{}
@@ -109,7 +109,7 @@ public class DarkColorTable : ProfessionalColorTable {
 public class DarkMenuRenderer : ToolStripProfessionalRenderer {
     public DarkMenuRenderer() : base(new DarkColorTable()) { RoundedEdges = false; }
     // ToolStripProfessionalRenderer ignores the color table's MenuItemSelected for the
-    // selected fill when visual styles are on — it draws a light system highlight, which
+    // selected fill when visual styles are on - it draws a light system highlight, which
     // renders our light-grey item text unreadable. Paint the fill ourselves so the
     // highlight stays dark and the text remains legible.
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
@@ -184,7 +184,7 @@ $script:ctxStrip = New-Object System.Windows.Forms.ContextMenuStrip
 $script:darkRenderer = New-Object DarkMenuRenderer
 $script:ctxStrip.Renderer  = $script:darkRenderer
 # Submenu dropdowns render via the global manager renderer, not the strip's own,
-# so set it too — otherwise nested menu items keep the unreadable light highlight.
+# so set it too - otherwise nested menu items keep the unreadable light highlight.
 [System.Windows.Forms.ToolStripManager]::Renderer = $script:darkRenderer
 $script:ctxStrip.BackColor = $darkBg
 $script:ctxStrip.ForeColor = $darkFg
@@ -430,7 +430,7 @@ Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Quit' { Quit-App }))
 
 # ---------------------------------------------------------------------------
-# Tray icon — left-click toggles the unified window
+# Tray icon - left-click toggles the unified window
 # ---------------------------------------------------------------------------
 function New-TrayIcon {
     $bmp = New-Object System.Drawing.Bitmap 32, 32

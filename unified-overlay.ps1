@@ -4,9 +4,9 @@
     Right-click the panel for all options.
 
     Usage:
-      pwsh -STA -File unified-overlay.ps1           # run
-      pwsh -STA -File unified-overlay.ps1 -Install  # add login auto-start + run
-      pwsh -STA -File unified-overlay.ps1 -Uninstall
+      powershell -STA -File unified-overlay.ps1           # run
+      powershell -STA -File unified-overlay.ps1 -Install  # add login auto-start + run
+      powershell -STA -File unified-overlay.ps1 -Uninstall
 #>
 param(
     [switch]$Install,
@@ -17,8 +17,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
-    throw 'PowerShell 7 (pwsh) is required.'
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    throw 'Windows PowerShell 5.1 or PowerShell 7+ is required.'
 }
 
 $script:AppDir    = $PSScriptRoot
@@ -35,10 +35,7 @@ function Quote-NativeArg([string]$Value) {
 
 function Start-HiddenBackground {
     $exe = (Get-Process -Id $PID).Path
-    # conhost --headless is required: pwsh -WindowStyle Hidden is ignored by Windows Terminal
-    Start-Process 'conhost.exe' -ArgumentList (
-        '--headless',
-        (Quote-NativeArg $exe),
+    $args = @(
         '-STA',
         '-NoLogo',
         '-NoProfile',
@@ -51,6 +48,13 @@ function Start-HiddenBackground {
         (Quote-NativeArg $PSCommandPath),
         '-Background'
     )
+
+    if ([System.IO.Path]::GetFileName($exe) -ieq 'pwsh.exe') {
+        # conhost --headless is required: pwsh -WindowStyle Hidden is ignored by Windows Terminal.
+        Start-Process 'conhost.exe' -ArgumentList (@('--headless', (Quote-NativeArg $exe)) + $args)
+    } else {
+        Start-Process $exe -WindowStyle Hidden -ArgumentList $args
+    }
 }
 
 function Stop-ExistingInstance {
@@ -70,7 +74,7 @@ function Stop-ExistingInstance {
         Remove-Item $script:PidPath -Force -ErrorAction SilentlyContinue
     }
 
-    Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" -ErrorAction SilentlyContinue |
+    Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe' OR Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
             $_.ProcessId -ne $PID -and
             $_.CommandLine -like "*$scriptPath*" -and
@@ -156,12 +160,12 @@ function Restore-UnifiedSections {
 # ---------------------------------------------------------------------------
 # Async data gathering (off the WPF dispatcher thread)
 #
-# The poll fans out to network (cursor.com, api.anthropic.com — up to 20s each)
+# The poll fans out to network (cursor.com, api.anthropic.com - up to 20s each)
 # and to 5 sqlite3.exe spawns. Doing that synchronously on the UI thread froze
-# the window for up to ~40s every 3 minutes. Instead we Start-ThreadJob
-# self-contained refreshes (no WPF, separate runspace -> no shared $script: vars),
-# and a fast completion-poll timer marshals each RETURNED data packet back onto
-# the UI thread and renders there.
+# the window for up to ~40s every 3 minutes. Instead we start self-contained
+# background refreshes (ThreadJob on PowerShell 7, process Job on Windows
+# PowerShell 5.1), and a fast completion-poll timer marshals each RETURNED data
+# packet back onto the UI thread and renders there.
 # ---------------------------------------------------------------------------
 
 # Runs in background runspaces. Each job dot-sources the modules it needs and
@@ -243,6 +247,19 @@ $script:CodexStatsScript = {
 
 $script:pollJobs = @{}
 
+function Start-OverlayBackgroundJob {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
+        [object[]]$ArgumentList = @()
+    )
+
+    if (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue) {
+        return Start-ThreadJob -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+    }
+
+    return Start-Job -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+}
+
 function Start-AllRefreshJobs {
     param([int]$UsageTimeoutSec = 20)
 
@@ -278,7 +295,7 @@ function Start-AllRefreshJobs {
             $script:pollJobs.Remove($kind)
         }
 
-        $script:pollJobs[$kind] = Start-ThreadJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
+        $script:pollJobs[$kind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
     }
 }
 
@@ -341,7 +358,7 @@ function Complete-RefreshJobs {
 }
 
 # ---------------------------------------------------------------------------
-# Startup sequence — window shows immediately in a "loading" state; the first
+# Startup sequence - window shows immediately in a "loading" state; the first
 # data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
@@ -365,7 +382,7 @@ $script:jobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $script:jobTimer.add_Tick({ [void](Complete-RefreshJobs) })
 
 # Tick timer: refreshes reset countdowns/clock every 30s (render only, no I/O,
-# no layout Measure — Resize-ToContent is intentionally NOT in this path).
+# no layout Measure - Resize-ToContent is intentionally NOT in this path).
 $script:tickTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:tickTimer.Interval = [TimeSpan]::FromSeconds(30)
 $script:tickTimer.add_Tick({ Update-AllSections })
