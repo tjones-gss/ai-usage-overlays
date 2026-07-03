@@ -6,3 +6,5 @@
 overlay-history.json
 .codegraph/
 .worktrees
+dist/
+packaging/build/

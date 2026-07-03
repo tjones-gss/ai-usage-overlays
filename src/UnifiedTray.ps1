@@ -77,6 +77,7 @@ function Invoke-ManualRefresh {
 $script:themeItems   = @{}
 $script:opacityItems = @{}
 $script:sectionItems = @{}
+$script:updateItems  = @{}
 
 # Dark colour table for the strip renderer
 # Resolve already-loaded assembly paths so Add-Type can find them under .NET 6+
@@ -196,6 +197,63 @@ function Add-Separator {
     [void]$script:ctxStrip.Items.Add($sep)
 }
 
+function Show-AppUpdateMessage {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [System.Windows.Forms.ToolTipIcon]$Icon = [System.Windows.Forms.ToolTipIcon]::Info
+    )
+
+    if ($script:notify) {
+        $script:notify.ShowBalloonTip(5000, $Title, $Message, $Icon)
+        return
+    }
+
+    [void][System.Windows.Forms.MessageBox]::Show($Message, $Title)
+}
+
+function Sync-UpdateMenuItems {
+    if (-not $script:updateItems -or -not $script:updateItems.ContainsKey('install')) { return }
+
+    $state = $script:UpdateState
+    $script:updateItems['install'].Enabled = ($state.Status -eq 'available' -and [bool]$state.DownloadUrl)
+    if ($state.Status -eq 'available' -and $state.LatestVersion) {
+        $script:updateItems['install'].Text = "Install update $($state.LatestVersion)"
+    } else {
+        $script:updateItems['install'].Text = 'Install update'
+    }
+
+    if ($script:updateItems.ContainsKey('status')) {
+        $script:updateItems['status'].Text = "Update status: $($state.Status)"
+    }
+}
+
+function Invoke-ManualUpdateCheck {
+    if ($script:updateItems.ContainsKey('check')) { $script:updateItems['check'].Enabled = $false }
+    try {
+        $info = Test-AppUpdateAvailable
+        Set-AppUpdateState $info
+        Sync-UpdateMenuItems
+
+        $icon = if ($info.Status -eq 'error') { [System.Windows.Forms.ToolTipIcon]::Warning } else { [System.Windows.Forms.ToolTipIcon]::Info }
+        Show-AppUpdateMessage 'AI Usage Overlay Updates' $info.Message $icon
+    } finally {
+        if ($script:updateItems.ContainsKey('check')) { $script:updateItems['check'].Enabled = $true }
+    }
+}
+
+function Invoke-InstallCheckedUpdate {
+    if ($script:updateItems.ContainsKey('install')) { $script:updateItems['install'].Enabled = $false }
+
+    $info = [pscustomobject]$script:UpdateState
+    $result = Install-AppUpdate -Info $info
+    Set-AppUpdateState $result
+    Sync-UpdateMenuItems
+
+    $icon = if ($result.Status -eq 'error') { [System.Windows.Forms.ToolTipIcon]::Warning } else { [System.Windows.Forms.ToolTipIcon]::Info }
+    Show-AppUpdateMessage 'AI Usage Overlay Updates' $result.Message $icon
+}
+
 # ---------------------------------------------------------------------------
 # Threshold alert system
 # ---------------------------------------------------------------------------
@@ -258,6 +316,23 @@ function Check-Alert([string]$key, $util) {
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
+Add-Separator
+
+# Updates
+$miCheckUpdate = New-StripItem 'Check for updates' { Invoke-ManualUpdateCheck }
+$script:updateItems['check'] = $miCheckUpdate
+[void]$script:ctxStrip.Items.Add($miCheckUpdate)
+
+$miInstallUpdate = New-StripItem 'Install update' { Invoke-InstallCheckedUpdate }
+$miInstallUpdate.Enabled = $false
+$script:updateItems['install'] = $miInstallUpdate
+[void]$script:ctxStrip.Items.Add($miInstallUpdate)
+
+$miUpdateStatus = New-StripItem 'Update status: unknown' $null
+$miUpdateStatus.Enabled = $false
+$script:updateItems['status'] = $miUpdateStatus
+[void]$script:ctxStrip.Items.Add($miUpdateStatus)
+Sync-UpdateMenuItems
 Add-Separator
 
 # Sections

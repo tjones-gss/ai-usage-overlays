@@ -130,6 +130,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\State.ps1')
 . (Join-Path $script:AppDir 'src\CodexData.ps1')
 . (Join-Path $script:AppDir 'src\CursorData.ps1')
+. (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedTray.ps1')

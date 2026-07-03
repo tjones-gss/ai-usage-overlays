@@ -8,6 +8,20 @@ $script:TickSeconds    = 30
 $script:BarTrackWidth  = 250.0
 $script:WarnPct        = 80
 $script:CritPct        = 95
+$script:AppVersion     = '0.1.0'
+$script:RepoOwner      = 'tjones-gss'
+$script:RepoName       = 'ai-usage-overlays'
+$script:UpdateChannel  = 'release'
+
+if ($script:AppDir) {
+    $script:AppVersionPath = Join-Path $script:AppDir 'app-version.txt'
+    if (Test-Path $script:AppVersionPath) {
+        try {
+            $versionText = (Get-Content $script:AppVersionPath -Raw).Trim()
+            if ($versionText) { $script:AppVersion = $versionText }
+        } catch { }
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Pricing table
