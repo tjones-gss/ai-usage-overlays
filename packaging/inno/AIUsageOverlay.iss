@@ -51,13 +51,13 @@ Name: "{autoprograms}\AI Usage Overlay"; Filename: "{sys}\wscript.exe"; Paramete
 Name: "{autoprograms}\Uninstall AI Usage Overlay"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{code:GetPwshPath}"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\packaging\installer-hooks.ps1"" -Action Install -InstallDir ""{app}"""; Flags: runhidden waituntilterminated; StatusMsg: "Starting AI Usage Overlay..."
+Filename: "{code:GetPowerShellPath}"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\packaging\installer-hooks.ps1"" -Action Install -InstallDir ""{app}"""; Flags: runhidden waituntilterminated; StatusMsg: "Starting AI Usage Overlay..."
 
 [UninstallRun]
-Filename: "{code:GetPwshPath}"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\packaging\installer-hooks.ps1"" -Action Uninstall -InstallDir ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "StopAIUsageOverlay"
+Filename: "{code:GetPowerShellPath}"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\packaging\installer-hooks.ps1"" -Action Uninstall -InstallDir ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "StopAIUsageOverlay"
 
 [Code]
-function GetPwshPath(Param: String): String;
+function GetPowerShellPath(Param: String): String;
 var
   Candidate: String;
 begin
@@ -82,7 +82,7 @@ begin
     exit;
   end;
 
-  Result := 'pwsh.exe';
+  Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
 end;
 
 function InitializeSetup(): Boolean;
@@ -90,8 +90,8 @@ var
   ResultCode: Integer;
 begin
   Result := Exec(
-    GetPwshPath(''),
-    '-NoLogo -NoProfile -Command "if ($PSVersionTable.PSEdition -ne ''Core'' -or $PSVersionTable.PSVersion.Major -lt 7) { exit 1 }"',
+    GetPowerShellPath(''),
+    '-NoLogo -NoProfile -Command "if ($PSVersionTable.PSVersion.Major -lt 5) { exit 1 }"',
     '',
     SW_HIDE,
     ewWaitUntilTerminated,
@@ -99,7 +99,7 @@ begin
 
   if (not Result) or (ResultCode <> 0) then
   begin
-    MsgBox('AI Usage Overlay requires PowerShell 7 (pwsh). Install PowerShell 7, then run this setup again.', mbCriticalError, MB_OK);
+    MsgBox('AI Usage Overlay requires Windows PowerShell 5.1 or PowerShell 7+.', mbCriticalError, MB_OK);
     Result := False;
   end;
 end;

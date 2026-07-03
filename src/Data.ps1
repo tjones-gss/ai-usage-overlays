@@ -1,4 +1,4 @@
-# Data.ps1 — data fetchers: Get-Usage, Get-Stats, and the Write-Log diagnostic helper
+# Data.ps1 - data fetchers: Get-Usage, Get-Stats, and the Write-Log diagnostic helper
 
 function Write-Log {
     param([string]$Message)
@@ -9,7 +9,7 @@ function Write-Log {
 }
 
 # ---------------------------------------------------------------------------
-# Get-ScopedLimit — pulls a per-model weekly limit out of the API's limits[]
+# Get-ScopedLimit - pulls a per-model weekly limit out of the API's limits[]
 # array by its scope display name (e.g. 'Fable') and returns an object shaped
 # like the legacy top-level seven_day_* fields so the UI can consume it
 # uniformly. Returns $null when the model isn't present.
@@ -59,18 +59,18 @@ function Get-Usage {
 }
 
 # ---------------------------------------------------------------------------
-# Measure-Stats — pure aggregator, takes pre-parsed records and a reference
+# Measure-Stats - pure aggregator, takes pre-parsed records and a reference
 # date; returns the same hashtable shape consumed by Update-UI.
 #
 # Each record must have:
-#   Model     — model name string (e.g. 'claude-opus-4-8')
-#   Date      — [datetime] (local date of the message)
-#   In        — [long] input tokens
-#   Out       — [long] output tokens
-#   CacheW    — [long] cache-creation tokens
-#   CacheR    — [long] cache-read tokens
-#   SessionId — session GUID string
-#   Key       — dedup key (already applied upstream by Get-Stats)
+#   Model     - model name string (e.g. 'claude-opus-4-8')
+#   Date      - [datetime] (local date of the message)
+#   In        - [long] input tokens
+#   Out       - [long] output tokens
+#   CacheW    - [long] cache-creation tokens
+#   CacheR    - [long] cache-read tokens
+#   SessionId - session GUID string
+#   Key       - dedup key (already applied upstream by Get-Stats)
 # ---------------------------------------------------------------------------
 function Measure-Stats([object[]]$records, [datetime]$today) {
     $val = 0.0; $tin = 0L; $tout = 0L
@@ -107,7 +107,7 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
     }
 }
 
-# Per-file parse cache: path → @{ Stamp; Records }
+# Per-file parse cache: path -> @{ Stamp; Records }
 # Stamp = "$($file.LastWriteTimeUtc.Ticks):$($file.Length)"
 $script:StatsFileCache = @{}
 
@@ -173,7 +173,7 @@ function Import-StatsFileCache {
 
         $script:StatsFileCache = $loaded
     } catch {
-        Write-Log "Get-Stats: failed to load cache $CachePath — $($_.Exception.Message)"
+        Write-Log "Get-Stats: failed to load cache $CachePath - $($_.Exception.Message)"
     }
 }
 
@@ -187,7 +187,7 @@ function Export-StatsFileCache {
             ConvertTo-Json -Depth 8 |
             Set-Content -Path $CachePath -Encoding UTF8 -ErrorAction Stop
     } catch {
-        Write-Log "Get-Stats: failed to save cache $CachePath — $($_.Exception.Message)"
+        Write-Log "Get-Stats: failed to save cache $CachePath - $($_.Exception.Message)"
     }
 }
 
@@ -197,14 +197,14 @@ function Get-Stats {
 
     $projDir = Join-Path $env:USERPROFILE '.claude\projects'
     if (-not (Test-Path $projDir)) {
-        Write-Log 'Get-Stats: ~/.claude/projects not found — no transcript data'
+        Write-Log 'Get-Stats: ~/.claude/projects not found - no transcript data'
         return
     }
 
     try {
         $files = Get-ChildItem $projDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
     } catch {
-        Write-Log "Get-Stats: failed to enumerate transcripts — $($_.Exception.Message)"
+        Write-Log "Get-Stats: failed to enumerate transcripts - $($_.Exception.Message)"
         return
     }
 
@@ -219,7 +219,7 @@ function Get-Stats {
 
         if ($cached -and $cached.Stamp -eq $stamp) {
             $activeCache[$file.FullName] = $cached
-            # Reuse cached parse — only add records whose keys haven't been seen yet
+            # Reuse cached parse - only add records whose keys haven't been seen yet
             foreach ($r in $cached.Records) {
                 if ($seen.Add($r.Key)) { $allRecords.Add($r) }
             }
@@ -231,7 +231,7 @@ function Get-Stats {
         try {
             $lines = Get-Content $file.FullName -Encoding UTF8 -ErrorAction Stop
         } catch {
-            Write-Log "Get-Stats: skipping unreadable file $($file.FullName) — $($_.Exception.Message)"
+            Write-Log "Get-Stats: skipping unreadable file $($file.FullName) - $($_.Exception.Message)"
             continue
         }
 
@@ -279,6 +279,6 @@ function Get-Stats {
     try {
         $script:Stats = Measure-Stats $allRecords.ToArray() (Get-Date)
     } catch {
-        Write-Log "Get-Stats: Measure-Stats failed — $($_.Exception.Message)"
+        Write-Log "Get-Stats: Measure-Stats failed - $($_.Exception.Message)"
     }
 }

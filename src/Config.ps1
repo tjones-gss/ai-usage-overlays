@@ -1,4 +1,4 @@
-# Config.ps1 — shared constants, pricing table, color themes, and default settings
+# Config.ps1 - shared constants, pricing table, color themes, and default settings
 
 # ---------------------------------------------------------------------------
 # Constants

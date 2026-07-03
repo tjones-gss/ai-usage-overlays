@@ -1,4 +1,6 @@
-# Format.ps1 — formatting helpers
+# Format.ps1 - formatting helpers
+
+$script:ResetGlyph = [string][char]0x21BA
 # NOTE: NewBrush and New-GradientBrush require PresentationCore (loaded by overlay.ps1 before dot-sourcing).
 # Format-Reset, Fmt-Tok, Fmt-Money, Remaining-Color are assembly-free and fully Pester-testable.
 
@@ -36,18 +38,18 @@ function Format-Reset([string]$iso) {
     try {
         $span = [System.DateTimeOffset]::Parse($iso) - [System.DateTimeOffset]::Now
         if ($span.TotalSeconds -le 0) { return 'now' }
-        # [math]::Floor — [int] rounds (banker's), which would tick the hours/days up a unit
-        if ($span.TotalDays  -ge 1)   { return ('↺ {0}d {1}h'   -f [int][math]::Floor($span.TotalDays), $span.Hours) }
-        if ($span.TotalHours -ge 1)   { return ('↺ {0}h{1:00}m' -f [int][math]::Floor($span.TotalHours), $span.Minutes) }
-        return ('↺ {0}m' -f [int][math]::Floor($span.TotalMinutes))
+        # [math]::Floor - [int] rounds (banker's), which would tick the hours/days up a unit
+        if ($span.TotalDays  -ge 1)   { return ('{0} {1}d {2}h'   -f $script:ResetGlyph, [int][math]::Floor($span.TotalDays), $span.Hours) }
+        if ($span.TotalHours -ge 1)   { return ('{0} {1}h{2:00}m' -f $script:ResetGlyph, [int][math]::Floor($span.TotalHours), $span.Minutes) }
+        return ('{0} {1}m' -f $script:ResetGlyph, [int][math]::Floor($span.TotalMinutes))
     } catch { return '' }
 }
 
-# Color for the remaining-% number: green → amber → red as capacity runs out
+# Color for the remaining-% number: green -> amber -> red as capacity runs out
 function Remaining-Color([double]$rem) {
-    if ($rem -le 5)  { return '#F87171' }  # red   — almost out
-    if ($rem -le 20) { return '#FBBF24' }  # amber — getting low
-    return '#F1F5F9'                        # white — plenty left
+    if ($rem -le 5)  { return '#F87171' }  # red   - almost out
+    if ($rem -le 20) { return '#FBBF24' }  # amber - getting low
+    return '#F1F5F9'                        # white - plenty left
 }
 
 function Fmt-Tok([double]$n) {

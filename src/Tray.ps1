@@ -1,7 +1,7 @@
-# Tray.ps1 — system tray icon, dark context menu, threshold alert balloons
+# Tray.ps1 - system tray icon, dark context menu, threshold alert balloons
 
 # ---------------------------------------------------------------------------
-# Window events — wired per window instance (called by Build-And-Show on each build)
+# Window events - wired per window instance (called by Build-And-Show on each build)
 # ---------------------------------------------------------------------------
 function Wire-WindowEvents {
     $script:window.Add_MouseLeftButtonDown({ try { $script:window.DragMove() } catch { Write-Log "DragMove error: $($_.Exception.Message)" }; Save-State })
@@ -28,7 +28,7 @@ function Quit-App {
 }
 
 # ---------------------------------------------------------------------------
-# Right-click context menu — dark-themed WinForms ContextMenuStrip shown
+# Right-click context menu - dark-themed WinForms ContextMenuStrip shown
 # from the WPF panel's MouseRightButtonUp event.
 # ---------------------------------------------------------------------------
 $script:themeItems  = @{}
@@ -64,7 +64,7 @@ public class DarkColorTable : ProfessionalColorTable {
 public class DarkMenuRenderer : ToolStripProfessionalRenderer {
     public DarkMenuRenderer() : base(new DarkColorTable()) { RoundedEdges = false; }
     // ToolStripProfessionalRenderer ignores the color table's MenuItemSelected for the
-    // selected fill when visual styles are on — it draws a light system highlight, which
+    // selected fill when visual styles are on - it draws a light system highlight, which
     // renders our light-grey item text unreadable. Paint the fill ourselves so the
     // highlight stays dark and the text remains legible.
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
@@ -114,7 +114,7 @@ $script:ctxStrip = New-Object System.Windows.Forms.ContextMenuStrip
 $script:darkRenderer = New-Object DarkMenuRenderer
 $script:ctxStrip.Renderer  = $script:darkRenderer
 # Submenu dropdowns render via the global manager renderer, not the strip's own,
-# so set it too — otherwise nested menu items keep the unreadable light highlight.
+# so set it too - otherwise nested menu items keep the unreadable light highlight.
 [System.Windows.Forms.ToolStripManager]::Renderer = $script:darkRenderer
 $script:ctxStrip.BackColor = $darkBg
 $script:ctxStrip.ForeColor = $darkFg
@@ -184,13 +184,13 @@ function Check-Alert([string]$key, $util) {
 # Context menu items
 # ---------------------------------------------------------------------------
 
-# ── Actions ───────────────────────────────────────────────────────────────
+# Actions
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now'             { Get-Usage; Get-Stats; Update-UI }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage'    { Start-Process 'https://claude.ai/new#settings/usage' }))
 Add-Separator
 
-# ── Snap to corner ────────────────────────────────────────────────────────
+# Snap to corner
 $miSnap = New-StripItem 'Snap to corner' $null
 foreach ($pair in @(('Top right','TR'),('Top left','TL'),('Bottom right','BR'),('Bottom left','BL'))) {
     $lbl = $pair[0]; $key = $pair[1]
@@ -199,7 +199,7 @@ foreach ($pair in @(('Top right','TR'),('Top left','TL'),('Bottom right','BR'),(
 }
 [void]$script:ctxStrip.Items.Add($miSnap)
 
-# ── Opacity ───────────────────────────────────────────────────────────────
+# Opacity
 $miOp = New-StripItem 'Opacity' $null
 foreach ($pair in @(('100%',1.0),('80%',0.8),('60%',0.6),('40%',0.4))) {
     $lbl = $pair[0]; $val = $pair[1]
@@ -211,7 +211,7 @@ foreach ($pair in @(('100%',1.0),('80%',0.8),('60%',0.6),('40%',0.4))) {
 }
 [void]$script:ctxStrip.Items.Add($miOp)
 
-# ── Themes ────────────────────────────────────────────────────────────────
+# Themes
 $miTheme = New-StripItem 'Theme' $null
 foreach ($tname in $script:Themes.Keys) {
     $tn  = $tname
@@ -224,7 +224,7 @@ foreach ($tname in $script:Themes.Keys) {
 [void]$script:ctxStrip.Items.Add($miTheme)
 Add-Separator
 
-# ── Toggles ───────────────────────────────────────────────────────────────
+# Toggles
 $miStats = New-StripItem 'Show stats panel' {
     $script:Cfg.ShowStats = -not [bool]$script:Cfg.ShowStats
     $miStats.Checked = [bool]$script:Cfg.ShowStats
@@ -265,12 +265,12 @@ $miGraph.Checked = [bool]$script:Cfg.ShowGraph
 
 Add-Separator
 
-# ── Window ────────────────────────────────────────────────────────────────
+# Window
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Minimize to tray' { $script:window.Hide() }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Quit'             { Quit-App }))
 
 # ---------------------------------------------------------------------------
-# Tray icon — left-click only (full menu is on the panel)
+# Tray icon - left-click only (full menu is on the panel)
 # ---------------------------------------------------------------------------
 function New-TrayIcon {
     $bmp = New-Object System.Drawing.Bitmap 32, 32

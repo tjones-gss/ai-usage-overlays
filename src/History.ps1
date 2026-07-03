@@ -1,4 +1,4 @@
-# History.ps1 — usage history ring buffer and burn-rate / ETA projection
+# History.ps1 - usage history ring buffer and burn-rate / ETA projection
 
 $script:HistoryPath   = Join-Path $script:AppDir 'overlay-history.json'
 $script:History       = [System.Collections.Generic.List[object]]::new()
@@ -75,7 +75,7 @@ function Get-Eta {
     if ([math]::Abs($denom) -lt 1e-10) { return $null }  # perfectly flat / single point
 
     $b = ($n * $sumXY - $sumX * $sumY) / $denom  # slope (util % per minute)
-    if ($b -le 0) { return $null }  # not increasing — no ETA
+    if ($b -le 0) { return $null }  # not increasing - no ETA
 
     # Current util = last sample's value
     $currentUtil = $ys[-1]
@@ -83,6 +83,6 @@ function Get-Eta {
 
     # Minutes to reach 100%
     $etaMinutes = (100.0 - $currentUtil) / $b
-    if ($etaMinutes -gt 1440) { return $null }  # more than 24h away — not useful
+    if ($etaMinutes -gt 1440) { return $null }  # more than 24h away - not useful
     return [int][math]::Ceiling($etaMinutes)
 }

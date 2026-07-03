@@ -6,8 +6,8 @@
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
-    throw 'PowerShell 7 (pwsh) is required. Run this installer from pwsh 7.'
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    throw 'Windows PowerShell 5.1 or PowerShell 7+ is required.'
 }
 
 $repo    = 'https://github.com/tjones-gss/ai-usage-overlays/archive/refs/heads/master.zip'
@@ -23,7 +23,7 @@ if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
 Expand-Archive $zip $extract -Force
 
 $ps = (Get-Command pwsh -ErrorAction SilentlyContinue)
-if (-not $ps) { throw 'PowerShell 7 (pwsh) is required.' }
+if (-not $ps) { $ps = (Get-Command powershell.exe -ErrorAction Stop) }
 
 Write-Host 'Installing unified AI usage overlay...'
 $dest = "$env:LOCALAPPDATA\AIUsageOverlay"

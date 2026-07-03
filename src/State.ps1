@@ -1,4 +1,4 @@
-# State.ps1 — settings persistence (overlay-state.json), window positioning, and Copy-Stats
+# State.ps1 - settings persistence (overlay-state.json), window positioning, and Copy-Stats
 
 function Save-State {
     try {
@@ -29,7 +29,7 @@ function Apply-Settings {
 }
 
 # Work area (in WPF device-independent units) of the monitor the window is
-# currently on — NOT the primary monitor. SystemParameters.WorkArea is always
+# currently on - NOT the primary monitor. SystemParameters.WorkArea is always
 # the primary; on multi-monitor setups we resolve the window's own monitor via
 # its HWND and convert the screen's pixel rect through the window's DPI transform.
 function Get-WorkArea {
@@ -83,7 +83,7 @@ function Position-Window {
 
 function Copy-Stats {
     $d = $script:State.Data; $s = $script:Stats
-    $lines = @("Claude Code Usage — $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+    $lines = @("Claude Code Usage - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
     if ($d) {
         $lines += "5-hour:  $([math]::Round(100-[double]$d.five_hour.utilization))% remaining  ($(Format-Reset $d.five_hour.resets_at))"
         $lines += "Weekly:  $([math]::Round(100-[double]$d.seven_day.utilization))% remaining  ($(Format-Reset $d.seven_day.resets_at))"

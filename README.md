@@ -30,7 +30,7 @@ Always-on-top Windows HUD for Claude Code, Codex, and Cursor IDE usage in one tr
 
 The setup app installs AI Usage Overlay for your Windows user, adds Start Menu entries, creates the login startup shortcut, and launches the overlay automatically. No git, no Python, and no admin rights are required.
 
-**PowerShell fallback** - if you cannot use the setup EXE, paste this into PowerShell 7, or hand it to your Claude / Cursor agent:
+**PowerShell fallback** - if you cannot use the setup EXE, paste this into PowerShell, or hand it to your Claude / Cursor agent:
 
 ```powershell
 irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex
@@ -46,7 +46,7 @@ This downloads the repo zip, installs the same script app under `%LOCALAPPDATA%\
 ## Requirements
 
 - Windows 10/11
-- PowerShell 7 (`pwsh`)
+- Windows PowerShell 5.1 or PowerShell 7+
 - Claude Code CLI signed in (`claude auth login`)
 - Codex installed if you want Codex stats; sessions are read from `~\.codex\sessions`
 - Cursor IDE signed in if you want Cursor usage and analytics
@@ -97,7 +97,7 @@ The fallback/manual install can still be removed by running `Uninstall.bat` from
 
 ## How It Works
 
-The overlay is a PowerShell 7/WPF app that reads existing local credentials and usage artifacts:
+The overlay is a PowerShell/WPF app that reads existing local credentials and usage artifacts:
 
 - Claude live quota comes from Anthropic's OAuth usage endpoint using the Claude Code token stored under `~\.claude`.
 - Claude local stats are computed from JSONL transcripts under `~\.claude\projects`.

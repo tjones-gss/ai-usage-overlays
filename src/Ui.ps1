@@ -1,4 +1,4 @@
-# Ui.ps1 — XAML window definition, theme application, bar rendering, sparkline, and UI update loop
+# Ui.ps1 - XAML window definition, theme application, bar rendering, sparkline, and UI update loop
 
 # ---------------------------------------------------------------------------
 # XAML
@@ -35,7 +35,7 @@ $xaml = @'
     </Border.BorderBrush>
     <DockPanel>
 
-      <!-- Rainbow accent stripe — CornerRadius matches outer border (16-1=15) -->
+      <!-- Rainbow accent stripe - CornerRadius matches outer border (16-1=15) -->
       <Border x:Name="accentStripe" DockPanel.Dock="Top" Height="5" CornerRadius="15,15,0,0">
         <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
@@ -65,7 +65,7 @@ $xaml = @'
                      Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- 5h metric — bar = remaining capacity -->
+        <!-- 5h metric - bar = remaining capacity -->
         <StackPanel Margin="0,0,0,10">
           <Grid Margin="0,0,0,3">
             <Grid.ColumnDefinitions>
@@ -339,7 +339,7 @@ function Apply-Theme([string]$name) {
 }
 
 # ---------------------------------------------------------------------------
-# Set-Bar — shows REMAINING capacity (100 - utilisation)
+# Set-Bar - shows REMAINING capacity (100 - utilisation)
 # Bar width: full = 100% remaining, empty = 0% remaining
 # ---------------------------------------------------------------------------
 function Set-Bar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt) {
@@ -363,7 +363,7 @@ function Set-Bar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util
 }
 
 # ---------------------------------------------------------------------------
-# Set-Spark — renders a sparkline polyline onto a named Canvas
+# Set-Spark - renders a sparkline polyline onto a named Canvas
 # ---------------------------------------------------------------------------
 function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey) {
     $spark  = $script:window.FindName($sparkName)

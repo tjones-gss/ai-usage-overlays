@@ -1,8 +1,8 @@
-# Pricing.ps1 — API cost estimation (references $script:Prices from Config.ps1)
+# Pricing.ps1 - API cost estimation (references $script:Prices from Config.ps1)
 
 function Estimate-Cost([string]$name, $v) {
     if ($name -eq '<synthetic>') { return 0.0 }
-    if (-not $script:Prices) { throw 'Estimate-Cost: $script:Prices not loaded — dot-source Config.ps1 first.' }
+    if (-not $script:Prices) { throw 'Estimate-Cost: $script:Prices not loaded - dot-source Config.ps1 first.' }
     if     ($name -match 'fable')  { $tier = 'fable'  }
     elseif ($name -match 'opus')   { $tier = 'opus'   }
     elseif ($name -match 'haiku')  { $tier = 'haiku'  }
@@ -10,7 +10,7 @@ function Estimate-Cost([string]$name, $v) {
     else {
         $tier = 'sonnet'
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
-            Write-Log "Unknown model '$name' — falling back to sonnet pricing (verify prices)"
+            Write-Log "Unknown model '$name' - falling back to sonnet pricing (verify prices)"
         }
     }
     $p = $script:Prices[$tier]

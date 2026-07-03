@@ -3,14 +3,17 @@ REM ============================================================
 REM  Unified AI Usage Overlay - uninstaller
 REM ============================================================
 echo Removing login auto-start...
-where pwsh >nul 2>nul
-if errorlevel 1 (
-    echo PowerShell 7 ^(pwsh^) is required.
-    echo.
-    pause
-    exit /b 1
+set "PS_EXE="
+if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" set "PS_EXE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+if not defined PS_EXE if exist "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe" set "PS_EXE=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
+if not defined PS_EXE if exist "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" set "PS_EXE=%LocalAppData%\Microsoft\WindowsApps\pwsh.exe"
+if not defined PS_EXE (
+    where pwsh >nul 2>nul && set "PS_EXE=pwsh"
 )
-pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0unified-overlay.ps1" -Uninstall
+if not defined PS_EXE (
+    set "PS_EXE=powershell.exe"
+)
+"%PS_EXE%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0unified-overlay.ps1" -Uninstall
 
 if exist "%~dp0unified-overlay.pid" (
     echo Stopping running overlay...
