@@ -8,14 +8,28 @@ function Wire-WindowEvents {
     $script:window.Add_Loaded({ Position-Window })
     $script:window.Add_Closing({ param($s, $e) if (-not $script:ReallyQuit) { $e.Cancel = $true; $script:window.Hide() } })
     $script:window.Add_MouseRightButtonUp({
-        $pt = [System.Windows.Forms.Control]::MousePosition
-        $script:ctxStrip.Show($pt.X, $pt.Y)
+        param($s, $e)
+        Show-ContextMenuAtWpfPointer $e
     })
 }
 
 function Toggle-Window {
     if ($script:window.IsVisible) { $script:window.Hide() }
     else { $script:window.Show(); $script:window.Activate(); $script:window.Topmost = $true }
+}
+
+function Show-ContextMenuAtWpfPointer {
+    param($EventArgs)
+
+    try {
+        $localPoint = $EventArgs.GetPosition($script:window)
+        $screenPoint = $script:window.PointToScreen($localPoint)
+        $script:ctxStrip.Show([int][math]::Round($screenPoint.X), [int][math]::Round($screenPoint.Y))
+        $EventArgs.Handled = $true
+    } catch {
+        $pt = [System.Windows.Forms.Control]::MousePosition
+        $script:ctxStrip.Show($pt.X, $pt.Y)
+    }
 }
 
 function Quit-App {

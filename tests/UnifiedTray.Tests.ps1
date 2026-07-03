@@ -24,4 +24,19 @@ Describe 'Unified tray refresh menu' {
         $refreshHandler | Should -Not -Match 'Get-CursorUsage'
         $refreshHandler | Should -Not -Match 'Get-CursorLocalStats'
     }
+
+    It 'positions the panel context menu from the WPF click point' {
+        $script:UnifiedTraySource | Should -Match 'function Show-ContextMenuAtWpfPointer'
+        $script:UnifiedTraySource | Should -Match 'GetPosition\(\$script:window\)'
+        $script:UnifiedTraySource | Should -Match 'PointToScreen\(\$localPoint\)'
+
+        $rightClickHandler = [regex]::Match(
+            $script:UnifiedTraySource,
+            '\$script:window\.Add_MouseRightButtonUp\(\{\s*(?<handler>.*?)\s*\}\)',
+            [System.Text.RegularExpressions.RegexOptions]::Singleline
+        ).Groups['handler'].Value
+
+        $rightClickHandler | Should -Match 'Show-ContextMenuAtWpfPointer \$e'
+        $rightClickHandler | Should -Not -Match 'MousePosition'
+    }
 }
