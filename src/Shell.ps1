@@ -214,6 +214,13 @@ $xaml = @'
             <StackPanel x:Name="statsPanel">
               <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="ACCOUNT" Foreground="#7BA8C8"
+                           FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" x:Name="claudeIdentityText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"
+                           TextTrimming="CharacterEllipsis"/>
+              </Grid>
+              <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="valText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
@@ -616,15 +623,19 @@ function Set-SectionVisible([string]$key, [bool]$visible) {
 # height is owned by code (animation or direct set), and this is how we learn
 # the target. Width is intrinsic (fixed inner panel) and returned too.
 # ---------------------------------------------------------------------------
-function Measure-ContentHeight {
+function Measure-ContentHeight([switch]$SkipArrange) {
     $root = $script:window
     $content = $root.Content
     if ($content) {
+        $content.InvalidateMeasure()
+        $content.InvalidateArrange()
         $content.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
         $size = $content.DesiredSize
         if ($size.Width -gt 0 -and $size.Height -gt 0) {
-            $content.Arrange([System.Windows.Rect]::new(0, 0, $size.Width, $size.Height))
-            $root.UpdateLayout()
+            if (-not $SkipArrange) {
+                $content.Arrange([System.Windows.Rect]::new(0, 0, $size.Width, $size.Height))
+                $root.UpdateLayout()
+            }
             return $size
         }
     }
@@ -639,12 +650,23 @@ function Measure-ContentHeight {
 # content size. Called after content-changing refreshes (opus row appears,
 # error text) so the box keeps fitting even though SizeToContent is Manual.
 # ---------------------------------------------------------------------------
-function Resize-ToContent {
+function Resize-ToContent([switch]$SkipDeferred) {
     $root = $script:window
     $size = Measure-ContentHeight
     if ($size.Width  -gt 0) { $root.Width  = $size.Width }
     if ($size.Height -gt 0) { $root.Height = $size.Height }
     $root.UpdateLayout()
+
+    if (-not $SkipDeferred -and $root.Dispatcher -and -not $script:ResizeToContentDeferred) {
+        $script:ResizeToContentDeferred = $true
+        [void]$root.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Loaded,
+            [Action]{
+                $script:ResizeToContentDeferred = $false
+                Resize-ToContent -SkipDeferred
+            }
+        )
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -664,10 +686,16 @@ function Toggle-Section([string]$key) {
 
     # Start the animation from the height we currently occupy.
     $from = $root.ActualHeight
+    if ($from -le 0) { $from = $root.Height }
+    if ($from -gt 0) {
+        $root.BeginAnimation([System.Windows.Window]::HeightProperty, $null)
+        $root.Height = $from
+    }
 
-    # Apply the visibility/chevron change, then measure the new desired size.
+    # Apply the visibility/chevron change, then measure the new desired size
+    # without arranging the final layout before the animation starts.
     Set-Section $key $expanded
-    $size = Measure-ContentHeight
+    $size = Measure-ContentHeight -SkipArrange
     $to = $size.Height
     if ($to -le 0) { $to = $root.ActualHeight }
     # Width is intrinsic; pin it now (SizeToContent is Manual).
@@ -688,6 +716,7 @@ function Toggle-Section([string]$key) {
     $anim.Add_Completed({
         $root.BeginAnimation([System.Windows.Window]::HeightProperty, $null)
         $root.Height = $to
+        Resize-ToContent -SkipDeferred
     }.GetNewClosure())
 
     $root.BeginAnimation([System.Windows.Window]::HeightProperty, $anim)
@@ -700,6 +729,11 @@ function Toggle-Section([string]$key) {
 # minus the chrome dot/time (now global). Reads $script:State/$script:Stats.
 # ---------------------------------------------------------------------------
 function Update-ClaudeSection {
+    $identityText = $script:window.FindName('claudeIdentityText')
+    if ($identityText) {
+        $identityText.Text = if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Display) { [string]$script:ClaudeIdentity.Display } else { '--' }
+    }
+
     $s = $script:Stats
     if ($s) {
         $script:window.FindName('valText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
@@ -875,6 +909,9 @@ function Update-AllSections {
 
     if ($script:notify -and $script:State -and $script:State.Data) {
         $cd = $script:State.Data
-        $script:notify.Text = ('AI  Claude 5h {0:0}%  Wk {1:0}%' -f [double]$cd.five_hour.utilization, [double]$cd.seven_day.utilization)
+        $identity = if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Email) { [string]$script:ClaudeIdentity.Email } else { 'Claude' }
+        $text = ('AI  {0}  5h {1:0}%  Wk {2:0}%' -f $identity, [double]$cd.five_hour.utilization, [double]$cd.seven_day.utilization)
+        if ($text.Length -gt 63) { $text = $text.Substring(0, 60) + '...' }
+        $script:notify.Text = $text
     }
 }

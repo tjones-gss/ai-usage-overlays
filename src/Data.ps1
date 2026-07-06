@@ -27,6 +27,60 @@ function Get-ScopedLimit([object]$resp, [string]$displayName) {
     return $null
 }
 
+function ConvertTo-ClaudeIdentity {
+    param($Profile)
+
+    if (-not $Profile) { return $null }
+
+    $account = $Profile.account
+    $user = $Profile.user
+    $org = $Profile.organization
+    if (-not $org -and $Profile.organizations) {
+        $org = @($Profile.organizations) | Select-Object -First 1
+    }
+
+    $email = $null
+    foreach ($candidate in @($Profile.email, $account.email, $user.email)) {
+        if ($candidate) { $email = [string]$candidate; break }
+    }
+
+    $orgName = $null
+    foreach ($candidate in @($Profile.organization_name, $org.name, $org.display_name)) {
+        if ($candidate) { $orgName = [string]$candidate; break }
+    }
+
+    $orgId = $null
+    foreach ($candidate in @($Profile.organization_uuid, $Profile.organization_id, $org.uuid, $org.id)) {
+        if ($candidate) { $orgId = [string]$candidate; break }
+    }
+
+    if (-not $email -and -not $orgName -and -not $orgId) { return $null }
+
+    $parts = @()
+    if ($email) { $parts += $email }
+    if ($orgName) { $parts += $orgName }
+    elseif ($orgId) { $parts += $orgId }
+
+    [PSCustomObject]@{
+        Email        = $email
+        Organization = $orgName
+        OrganizationId = $orgId
+        Display      = ($parts -join ' / ')
+    }
+}
+
+function Get-ClaudeProfile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Token,
+        [int]$TimeoutSec = 20
+    )
+
+    $profile = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/profile' -TimeoutSec $TimeoutSec -Headers @{
+        Authorization = "Bearer $Token"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+    }
+    return ConvertTo-ClaudeIdentity $profile
+}
+
 function Get-Usage {
     param([int]$TimeoutSec = 20)
 
@@ -55,6 +109,12 @@ function Get-Usage {
         if     ($code -eq 401) { $script:State.Status = 'auth';  $script:State.Message = 'Auth expired' }
         elseif ($code -eq 429) { $script:State.Status = 'stale'; $script:State.Message = 'Rate limited' }
         else                   { $script:State.Status = 'stale'; $script:State.Message = $_.Exception.Message }
+    }
+
+    try {
+        $script:ClaudeIdentity = Get-ClaudeProfile -Token $tok -TimeoutSec $TimeoutSec
+    } catch {
+        Write-Log "Get-Usage: Claude profile fetch failed - $($_.Exception.Message)"
     }
 }
 

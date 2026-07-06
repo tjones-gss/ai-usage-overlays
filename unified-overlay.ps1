@@ -198,6 +198,7 @@ $script:ClaudeUsageScript = {
     @{
         Kind            = 'ClaudeUsage'
         State           = $script:State
+        ClaudeIdentity  = $script:ClaudeIdentity
         LiveData        = $script:LiveData
         SummaryData     = $script:SummaryData
         LocalData       = $script:LocalData
@@ -318,6 +319,7 @@ function Complete-RefreshJobs {
                 switch ($resultKind) {
                     'ClaudeUsage' {
                         $script:State           = $r['State']
+                        $script:ClaudeIdentity  = $r['ClaudeIdentity']
                         $script:LiveData        = $r['LiveData']
                         $script:SummaryData     = $r['SummaryData']
                         $script:LocalData       = $r['LocalData']

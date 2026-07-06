@@ -104,6 +104,63 @@ function Apply-UnifiedSettings {
     Apply-UnifiedTheme $script:Cfg.Theme
 }
 
+function Test-FiniteNumber($value) {
+    if ($null -eq $value) { return $false }
+    try {
+        $d = [double]$value
+        return -not [double]::IsNaN($d) -and -not [double]::IsInfinity($d)
+    } catch {
+        return $false
+    }
+}
+
+function Get-WindowDimension([string]$name) {
+    $actualName = "Actual$name"
+    $candidates = @(
+        $script:window.$actualName,
+        $script:window.$name,
+        $script:window.RenderSize.$name,
+        $script:window.DesiredSize.$name
+    )
+
+    foreach ($candidate in $candidates) {
+        if ((Test-FiniteNumber $candidate) -and [double]$candidate -gt 0) {
+            return [double]$candidate
+        }
+    }
+
+    return 0.0
+}
+
+function ConvertFrom-ScreenWorkArea {
+    param(
+        $WorkingArea,
+        $TransformFromDevice,
+        $ScreenOrigin
+    )
+
+    $scaleX = [double]$TransformFromDevice.M11
+    $scaleY = [double]$TransformFromDevice.M22
+
+    if ($ScreenOrigin -and (Test-FiniteNumber $script:window.Left) -and (Test-FiniteNumber $script:window.Top)) {
+        $left = [double]$script:window.Left + (([double]$WorkingArea.Left - [double]$ScreenOrigin.X) * $scaleX)
+        $top  = [double]$script:window.Top  + (([double]$WorkingArea.Top  - [double]$ScreenOrigin.Y) * $scaleY)
+        return @{
+            Left   = $left
+            Top    = $top
+            Right  = $left + ([double]$WorkingArea.Width  * $scaleX)
+            Bottom = $top  + ([double]$WorkingArea.Height * $scaleY)
+        }
+    }
+
+    return @{
+        Left   = [double]$WorkingArea.Left   * $scaleX
+        Top    = [double]$WorkingArea.Top    * $scaleY
+        Right  = [double]$WorkingArea.Right  * $scaleX
+        Bottom = [double]$WorkingArea.Bottom * $scaleY
+    }
+}
+
 # Work area (in WPF device-independent units) of the monitor the window is
 # currently on. SystemParameters.WorkArea is always primary, so resolve the
 # window monitor by HWND and convert the screen pixel rect through DPI.
@@ -116,26 +173,27 @@ function Get-WorkArea {
     $fromDev = $src.CompositionTarget.TransformFromDevice
     $hwnd    = (New-Object System.Windows.Interop.WindowInteropHelper $script:window).Handle
     $wa      = ([System.Windows.Forms.Screen]::FromHandle($hwnd)).WorkingArea
-    return @{
-        Left   = $wa.Left   * $fromDev.M11
-        Top    = $wa.Top    * $fromDev.M22
-        Right  = $wa.Right  * $fromDev.M11
-        Bottom = $wa.Bottom * $fromDev.M22
+    $origin  = $null
+    try {
+        $origin = $script:window.PointToScreen((New-Object System.Windows.Point 0, 0))
+    } catch {
+        $origin = $null
     }
+    return ConvertFrom-ScreenWorkArea $wa $fromDev $origin
 }
 
 function Clamp-Position {
     $wa = Get-WorkArea
-    $w  = if ($script:window.ActualWidth  -gt 0) { $script:window.ActualWidth  } else { $script:window.Width }
-    $h  = if ($script:window.ActualHeight -gt 0) { $script:window.ActualHeight } else { $script:window.Height }
+    $w  = Get-WindowDimension 'Width'
+    $h  = Get-WindowDimension 'Height'
     $script:window.Left = [math]::Max($wa.Left, [math]::Min($script:window.Left, $wa.Right  - $w))
     $script:window.Top  = [math]::Max($wa.Top,  [math]::Min($script:window.Top,  $wa.Bottom - $h))
 }
 
 function Snap-ToCorner([string]$corner) {
     $wa = Get-WorkArea
-    $w  = if ($script:window.ActualWidth  -gt 0) { $script:window.ActualWidth  } else { $script:window.Width }
-    $h  = if ($script:window.ActualHeight -gt 0) { $script:window.ActualHeight } else { $script:window.Height }
+    $w  = Get-WindowDimension 'Width'
+    $h  = Get-WindowDimension 'Height'
     switch ($corner) {
         'TR' { $script:window.Left = $wa.Right - $w - 16; $script:window.Top = $wa.Top    + 16 }
         'TL' { $script:window.Left = $wa.Left  + 16;      $script:window.Top = $wa.Top    + 16 }
@@ -164,6 +222,9 @@ function Copy-Stats {
     $lines = @("AI Usage Overlay - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
 
     if ($d) {
+        if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Display) {
+            $lines += "Claude account: $($script:ClaudeIdentity.Display)"
+        }
         $lines += "Claude 5-hour: $([math]::Round(100 - [double]$d.five_hour.utilization))% remaining ($(Format-Reset $d.five_hour.resets_at))"
         $lines += "Claude weekly: $([math]::Round(100 - [double]$d.seven_day.utilization))% remaining ($(Format-Reset $d.seven_day.resets_at))"
         if ($d.seven_day_fable)  { $lines += "Claude Fable: $([math]::Round(100 - [double]$d.seven_day_fable.utilization))% remaining" }

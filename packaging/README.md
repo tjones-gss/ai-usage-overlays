@@ -23,3 +23,15 @@ pwsh -NoLogo -NoProfile -File packaging\build-installer.ps1
 ```
 
 The setup executable is written to `dist\AIUsageOverlaySetup.exe`.
+
+## Update Verification
+
+Before closing update-related release work, verify a published installer handoff end to end:
+
+1. Install an older release with `AIUsageOverlaySetup.exe`.
+2. Launch the overlay and confirm the tray menu shows the older app version's update state.
+3. Publish or select a newer GitHub release that includes `AIUsageOverlaySetup.exe`.
+4. Use **Check for updates** from the tray menu and confirm **Install update** becomes enabled.
+5. Choose **Install update** and wait for setup to finish.
+6. Confirm the old overlay process exits, a new overlay process starts, the Startup shortcut still points at `Start-Unified.vbs`, and `app-version.txt` contains the newer version.
+7. Confirm `unified-overlay-state.json`, `overlay-history.json`, `stats-cache.json`, and `codex-cache.json` are preserved.
