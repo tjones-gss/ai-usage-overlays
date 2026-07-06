@@ -2,6 +2,8 @@
 
 This folder contains the first-pass Windows installer scaffolding for AI Usage Overlay.
 
+For the full contributor workflow, including issue creation, pull requests, release tags, and update publishing, see [../docs/developer-procedures.md](../docs/developer-procedures.md).
+
 ## Current Behavior Captured
 
 - Install target stays per-user at `%LOCALAPPDATA%\AIUsageOverlay`, matching `install.ps1`.

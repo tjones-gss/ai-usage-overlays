@@ -122,6 +122,8 @@ These files are local runtime data and are not required in git.
 
 ## Development
 
+Developer workflow documentation lives in [docs/developer-procedures.md](docs/developer-procedures.md). Start there for issue writing, branch/PR flow, release tagging, and update verification.
+
 Run the Pester test suite from the repo root:
 
 ```powershell
@@ -136,4 +138,4 @@ pwsh -NoLogo -NoProfile -File packaging\build-installer.ps1
 
 The installer artifact is written to `dist\AIUsageOverlaySetup.exe`. Release builds also publish this artifact from the `Release Installer` GitHub Actions workflow.
 
-The default branch is `master`. The old provider-specific branches have been retired; current development happens against the unified overlay on `master`.
+The default branch is `master`. The old provider-specific branches have been retired; current development happens against the unified overlay on `master`. Use short-lived feature branches for normal work and merge through pull requests unless a maintainer is intentionally shipping a small release directly.
