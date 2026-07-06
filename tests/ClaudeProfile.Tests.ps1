@@ -78,3 +78,35 @@ Describe 'Get-Usage Claude profile behavior' {
         $script:ClaudeIdentity | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Claude rate-limit backoff helpers' {
+    BeforeEach {
+        $script:AppDir = $TestDrive
+    }
+
+    It 'persists and reloads the Claude backoff timestamp' {
+        $until = (Get-Date).AddMinutes(12)
+
+        Set-ClaudeBackoffUntil $until
+        $loaded = Get-ClaudeBackoffUntil
+
+        $loaded | Should -Not -BeNullOrEmpty
+        [math]::Abs(($loaded - $until).TotalSeconds) | Should -BeLessThan 2
+    }
+
+    It 'parses Retry-After seconds with a one-minute floor' {
+        $before = Get-Date
+
+        $retryAt = ConvertFrom-RetryAfter '15'
+
+        ($retryAt - $before).TotalSeconds | Should -BeGreaterOrEqual 59
+    }
+
+    It 'clears persisted Claude backoff state' {
+        Set-ClaudeBackoffUntil (Get-Date).AddMinutes(10)
+
+        Clear-ClaudeBackoff
+
+        Get-ClaudeBackoffUntil | Should -BeNullOrEmpty
+    }
+}

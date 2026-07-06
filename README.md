@@ -61,6 +61,7 @@ Each provider is optional. If one source is unavailable, the overlay keeps showi
 | Show / hide Claude, Codex, or Cursor section | Right-click -> Show/Hide provider |
 | Expand / collapse a section | Click its section header |
 | Refresh usage immediately | Right-click -> Refresh now |
+| Print one JSON snapshot | `pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json` |
 | Copy current stats | Right-click -> Copy stats to clipboard |
 | Open Claude usage page | Right-click -> Open claude.ai/usage |
 | Change theme or opacity | Right-click -> Theme / Opacity |

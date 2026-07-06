@@ -4,6 +4,19 @@ $script:HistoryPath   = Join-Path $script:AppDir 'overlay-history.json'
 $script:History       = [System.Collections.Generic.List[object]]::new()
 $script:HistoryMaxLen = 480   # ~24h at 3-min polling intervals
 
+function Get-ClaudeHistoryQuotaFields {
+    @(
+        'five_hour'
+        'seven_day'
+        'seven_day_fable'
+        'seven_day_opus'
+        'seven_day_sonnet'
+        'seven_day_oauth_apps'
+        'seven_day_omelette'
+        'seven_day_cowork'
+    )
+}
+
 function Load-History {
     try {
         if (-not (Test-Path $script:HistoryPath)) { return }
@@ -20,13 +33,14 @@ function Load-History {
 
 function Add-HistorySample([object]$data) {
     # $data is the API response object from Get-Usage ($script:State.Data)
-    $sample = [PSCustomObject]@{
-        t               = (Get-Date -Format 'o')  # ISO 8601
-        five_hour       = if ($data.five_hour)        { [double]$data.five_hour.utilization }        else { $null }
-        seven_day       = if ($data.seven_day)         { [double]$data.seven_day.utilization }         else { $null }
-        seven_day_fable = if ($data.seven_day_fable)   { [double]$data.seven_day_fable.utilization }   else { $null }
-        seven_day_opus  = if ($data.seven_day_opus)   { [double]$data.seven_day_opus.utilization }    else { $null }
+    $sampleData = [ordered]@{
+        t = (Get-Date -Format 'o')  # ISO 8601
     }
+    foreach ($field in Get-ClaudeHistoryQuotaFields) {
+        $window = if ($data) { $data.PSObject.Properties[$field].Value } else { $null }
+        $sampleData[$field] = if ($window) { [double]$window.utilization } else { $null }
+    }
+    $sample = [PSCustomObject]$sampleData
     $script:History.Add($sample)
     # Trim to ring buffer max
     while ($script:History.Count -gt $script:HistoryMaxLen) {

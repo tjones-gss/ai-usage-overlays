@@ -5,6 +5,7 @@
 
     Usage:
       powershell -STA -File unified-overlay.ps1           # run
+      powershell -File unified-overlay.ps1 -Json          # print one snapshot and exit
       powershell -STA -File unified-overlay.ps1 -Install  # add login auto-start + run
       powershell -STA -File unified-overlay.ps1 -Uninstall
 #>
@@ -12,6 +13,9 @@ param(
     [switch]$Install,
     [switch]$Uninstall,
     [switch]$Hidden,
+    [switch]$Json,
+    [switch]$Snapshot,
+    [switch]$NoHud,
     [switch]$Background   # set on self-relaunch to break infinite-loop
 )
 
@@ -97,12 +101,95 @@ function Install-Autostart {
 function Uninstall-Autostart { if (Test-Path $script:LnkPath) { Remove-Item $script:LnkPath -Force } }
 function Test-Autostart      { Test-Path $script:LnkPath }
 
+function Invoke-SafeSnapshotStep {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock
+    )
+
+    try {
+        & $ScriptBlock
+        return $null
+    } catch {
+        Write-Log "Snapshot: $Name failed - $($_.Exception.Message)"
+        return $_.Exception.Message
+    }
+}
+
+function Invoke-OverlaySnapshot {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $env:PATH = "$script:AppDir;$env:PATH"
+
+    . (Join-Path $script:AppDir 'src\Config.ps1')
+    . (Join-Path $script:AppDir 'src\Format.ps1')
+    . (Join-Path $script:AppDir 'src\Pricing.ps1')
+    . (Join-Path $script:AppDir 'src\History.ps1')
+    . (Join-Path $script:AppDir 'src\Data.ps1')
+    . (Join-Path $script:AppDir 'src\State.ps1')
+    . (Join-Path $script:AppDir 'src\CodexData.ps1')
+    . (Join-Path $script:AppDir 'src\CursorData.ps1')
+    . (Join-Path $script:AppDir 'src\Update.ps1')
+
+    $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
+    $script:Stats = $null
+    $script:CodexStats = $null
+    $script:LiveData = $null
+    $script:SummaryData = $null
+    $script:LocalData = $null
+    $script:AuthState = 'init'
+    $script:CursorErrMsg = ''
+    $script:CursorLastFetch = ''
+
+    Load-History
+    $claudeError = Invoke-SafeSnapshotStep 'Claude usage' { Get-Usage -Force }
+    $claudeStatsError = Invoke-SafeSnapshotStep 'Claude stats' { Get-Stats }
+    $codexError = Invoke-SafeSnapshotStep 'Codex stats' { Get-CodexStats }
+    $cursorUsageError = Invoke-SafeSnapshotStep 'Cursor usage' { Get-CursorUsage }
+    $cursorStatsError = Invoke-SafeSnapshotStep 'Cursor stats' { Get-CursorLocalStats }
+
+    $snapshot = [ordered]@{
+        generatedAt = (Get-Date).ToString('o')
+        appVersion = $script:AppVersion
+        claude = [ordered]@{
+            status = $script:State.Status
+            message = $script:State.Message
+            lastFetch = $script:State.LastFetch
+            identity = $script:ClaudeIdentity
+            usage = $script:State.Data
+            stats = $script:Stats
+            error = $claudeError
+            statsError = $claudeStatsError
+        }
+        codex = [ordered]@{
+            status = if ($script:CodexStats) { 'ok' } elseif ($codexError) { 'error' } else { 'unavailable' }
+            stats = $script:CodexStats
+            error = $codexError
+        }
+        cursor = [ordered]@{
+            status = $script:AuthState
+            message = $script:CursorErrMsg
+            lastFetch = $script:CursorLastFetch
+            usage = $script:LiveData
+            summary = $script:SummaryData
+            local = $script:LocalData
+            error = if ($cursorUsageError) { $cursorUsageError } else { $cursorStatsError }
+        }
+    }
+
+    $snapshot | ConvertTo-Json -Depth 12
+}
+
 if ($Uninstall) { Uninstall-Autostart; Write-Host 'Removed login auto-start.'; return }
 if ($Install) {
     Install-Autostart
     Stop-ExistingInstance
     Start-HiddenBackground
     Write-Host 'Installed. Unified overlay is running.'
+    return
+}
+
+if ($Json -or $Snapshot -or $NoHud) {
+    Invoke-OverlaySnapshot
     return
 }
 
@@ -171,7 +258,7 @@ function Restore-UnifiedSections {
 # Runs in background runspaces. Each job dot-sources the modules it needs and
 # RETURNS plain data only; WPF objects are touched only on the dispatcher thread.
 $script:ClaudeUsageScript = {
-    param([string]$AppDir, [string]$CredPath, [string]$ErrLog, [int]$UsageTimeoutSec = 20)
+    param([string]$AppDir, [string]$CredPath, [string]$ErrLog, [int]$UsageTimeoutSec = 20, [bool]$ForceRefresh = $false)
 
     $script:AppDir   = $AppDir
     $script:CredPath = $CredPath
@@ -191,7 +278,7 @@ $script:ClaudeUsageScript = {
     $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
 
     Load-History
-    Get-Usage -TimeoutSec $UsageTimeoutSec
+    Get-Usage -TimeoutSec $UsageTimeoutSec -Force:$ForceRefresh
     Get-CursorUsage
     Get-CursorLocalStats
 
@@ -247,6 +334,62 @@ $script:CodexStatsScript = {
 }
 
 $script:pollJobs = @{}
+$script:LastClaudeUsageSignature = $null
+$script:ClaudeUnchangedPolls = 0
+
+function Get-ClaudeUsageSignature {
+    param($Data)
+
+    if (-not $Data) { return '' }
+    $parts = @()
+    foreach ($key in @('five_hour','seven_day','seven_day_fable','seven_day_opus')) {
+        $prop = $Data.PSObject.Properties[$key]
+        if (-not $prop -or -not $prop.Value) { continue }
+        $node = $prop.Value
+        $parts += ('{0}:{1}:{2}' -f $key, $node.utilization, $node.resets_at)
+    }
+    return ($parts -join '|')
+}
+
+function Get-ClaudeAdaptivePollSeconds {
+    param($State)
+
+    $defaultSeconds = if ($script:PollSeconds) { [int]$script:PollSeconds } else { 180 }
+
+    $backoffUntil = Get-ClaudeBackoffUntil
+    if ($backoffUntil -and $backoffUntil -gt (Get-Date)) {
+        return [math]::Min(3600, [math]::Max(60, [int][math]::Ceiling(($backoffUntil - (Get-Date)).TotalSeconds)))
+    }
+
+    if (-not $State -or -not $State.Data) { return $defaultSeconds }
+
+    $fiveHour = $State.Data.five_hour
+    if ($fiveHour -and $null -ne $fiveHour.utilization -and [double]$fiveHour.utilization -ge [double]$script:WarnPct) {
+        $script:ClaudeUnchangedPolls = 0
+        $script:LastClaudeUsageSignature = Get-ClaudeUsageSignature $State.Data
+        return 60
+    }
+
+    $signature = Get-ClaudeUsageSignature $State.Data
+    if ($signature -and $signature -eq $script:LastClaudeUsageSignature) {
+        $script:ClaudeUnchangedPolls++
+    } else {
+        $script:ClaudeUnchangedPolls = 0
+        $script:LastClaudeUsageSignature = $signature
+    }
+
+    if ($script:ClaudeUnchangedPolls -ge 2) { return 900 }
+    if ($script:ClaudeUnchangedPolls -eq 1) { return 300 }
+    return $defaultSeconds
+}
+
+function Sync-ClaudePollTimerInterval {
+    param($State)
+
+    if (-not $script:pollTimer) { return }
+    $seconds = Get-ClaudeAdaptivePollSeconds $State
+    $script:pollTimer.Interval = [TimeSpan]::FromSeconds($seconds)
+}
 
 function Start-OverlayBackgroundJob {
     param(
@@ -262,13 +405,16 @@ function Start-OverlayBackgroundJob {
 }
 
 function Start-AllRefreshJobs {
-    param([int]$UsageTimeoutSec = 20)
+    param(
+        [int]$UsageTimeoutSec = 20,
+        [switch]$Force
+    )
 
     $jobs = @(
         @{
             Kind       = 'ClaudeUsage'
             Script     = $script:ClaudeUsageScript
-            Arguments  = @($script:AppDir, $script:CredPath, $script:ErrLog, $UsageTimeoutSec)
+            Arguments  = @($script:AppDir, $script:CredPath, $script:ErrLog, $UsageTimeoutSec, [bool]$Force)
         }
         @{
             Kind       = 'ClaudeStats'
@@ -328,6 +474,7 @@ function Complete-RefreshJobs {
                         $script:CursorLastFetch = $r['CursorLastFetch']
                         $script:History         = [System.Collections.Generic.List[object]]::new()
                         foreach ($sample in @($r['History'])) { [void]$script:History.Add($sample) }
+                        Sync-ClaudePollTimerInterval $script:State
                     }
                     'ClaudeStats' {
                         $script:Stats = $r['Stats']
@@ -388,6 +535,8 @@ $script:jobTimer.add_Tick({ [void](Complete-RefreshJobs) })
 $script:tickTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:tickTimer.Interval = [TimeSpan]::FromSeconds(30)
 $script:tickTimer.add_Tick({ Update-AllSections })
+
+Start-AutoUpdateChecks
 
 function Show-UnifiedWindowWhenRendered {
     Resize-ToContent

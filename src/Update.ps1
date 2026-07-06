@@ -2,6 +2,7 @@
 
 $script:UpdateAssetName = 'AIUsageOverlaySetup.exe'
 $script:UpdateApiBase = 'https://api.github.com'
+$script:UpdateAutoCheckIntervalHours = 24
 $script:UpdateState = [ordered]@{
     CheckedAt      = $null
     Status         = 'unknown'
@@ -10,6 +11,50 @@ $script:UpdateState = [ordered]@{
     LatestVersion  = $null
     DownloadUrl    = $null
     WebUrl         = $null
+}
+
+function Get-AppUpdateVersionKey {
+    param($Info)
+
+    if (-not $Info) { return $null }
+
+    $latest = $Info.LatestVersion
+    if ($latest) { return [string]$latest }
+
+    return $null
+}
+
+function Test-AppUpdateAutoCheckDue {
+    param(
+        [bool]$Enabled = $true,
+        $LastCheckedAt = $script:UpdateState.CheckedAt,
+        [datetime]$Now = (Get-Date),
+        [int]$IntervalHours = $script:UpdateAutoCheckIntervalHours
+    )
+
+    if (-not $Enabled) { return $false }
+    if (-not $LastCheckedAt) { return $true }
+
+    try {
+        $last = [datetime]$LastCheckedAt
+        return (($Now - $last).TotalHours -ge $IntervalHours)
+    } catch {
+        return $true
+    }
+}
+
+function Test-AppUpdateNotificationDue {
+    param(
+        [Parameter(Mandatory = $true)]$Info,
+        [string]$LastNotifiedVersion
+    )
+
+    if (-not $Info -or $Info.Status -ne 'available') { return $false }
+
+    $versionKey = Get-AppUpdateVersionKey $Info
+    if (-not $versionKey) { return $false }
+
+    return ($versionKey -ne $LastNotifiedVersion)
 }
 
 function ConvertTo-AppVersion {

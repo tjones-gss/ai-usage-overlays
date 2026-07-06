@@ -9,22 +9,100 @@ function Write-Log {
 }
 
 # ---------------------------------------------------------------------------
-# Get-ScopedLimit - pulls a per-model weekly limit out of the API's limits[]
-# array by its scope display name (e.g. 'Fable') and returns an object shaped
-# like the legacy top-level seven_day_* fields so the UI can consume it
-# uniformly. Returns $null when the model isn't present.
+# Claude quota window normalization
+#
+# Anthropic may return some weekly windows as top-level seven_day_* fields and
+# some in limits[]. Surface both shapes under stable seven_day_* properties so
+# export/history code can serialize them without knowing the payload variant.
 # ---------------------------------------------------------------------------
-function Get-ScopedLimit([object]$resp, [string]$displayName) {
+function Get-ClaudeQuotaWindowSpecs {
+    @(
+        [PSCustomObject]@{ Field = 'seven_day_fable';      Label = 'Fable';      Match = @('Fable') }
+        [PSCustomObject]@{ Field = 'seven_day_opus';       Label = 'Opus';       Match = @('Opus') }
+        [PSCustomObject]@{ Field = 'seven_day_sonnet';     Label = 'Sonnet';     Match = @('Sonnet') }
+        [PSCustomObject]@{ Field = 'seven_day_oauth_apps'; Label = 'OAuth apps'; Match = @('OAuth apps', 'OAuth Apps', 'OAuth') }
+        [PSCustomObject]@{ Field = 'seven_day_omelette';   Label = 'Omelette';   Match = @('Omelette') }
+        [PSCustomObject]@{ Field = 'seven_day_cowork';     Label = 'Cowork';     Match = @('Cowork') }
+    )
+}
+
+function ConvertTo-ClaudeQuotaMatchKey($value) {
+    if (-not $value) { return '' }
+    return ([string]$value).ToLowerInvariant() -replace '[^a-z0-9]', ''
+}
+
+function Get-PropertyValue($object, [string]$name) {
+    if (-not $object) { return $null }
+    $prop = $object.PSObject.Properties[$name]
+    if ($prop) { return $prop.Value }
+    return $null
+}
+
+function Get-ClaudeLimitNames($limit, $spec) {
+    $scope = Get-PropertyValue $limit 'scope'
+    $model = Get-PropertyValue $scope 'model'
+    $application = Get-PropertyValue $scope 'application'
+
+    @(
+        (Get-PropertyValue $limit 'display_name')
+        (Get-PropertyValue $limit 'name')
+        (Get-PropertyValue $limit 'limit_name')
+        (Get-PropertyValue $limit 'limit_id')
+        (Get-PropertyValue $scope 'display_name')
+        (Get-PropertyValue $scope 'name')
+        (Get-PropertyValue $scope 'type')
+        (Get-PropertyValue $model 'display_name')
+        (Get-PropertyValue $model 'name')
+        (Get-PropertyValue $application 'display_name')
+        (Get-PropertyValue $application 'name')
+    ) | Where-Object { $_ }
+}
+
+function ConvertTo-ClaudeQuotaWindow($limit) {
+    if (-not $limit) { return $null }
+    $utilization = $null
+    foreach ($name in @('utilization', 'percent', 'used_percent')) {
+        $candidate = Get-PropertyValue $limit $name
+        if ($null -ne $candidate) { $utilization = [double]$candidate; break }
+    }
+    if ($null -eq $utilization) { return $null }
+
+    [PSCustomObject]@{
+        utilization = $utilization
+        resets_at   = Get-PropertyValue $limit 'resets_at'
+    }
+}
+
+function Get-ScopedLimit([object]$resp, [object]$spec) {
     if (-not $resp.limits) { return $null }
+    $matches = @($spec.Match | ForEach-Object { ConvertTo-ClaudeQuotaMatchKey $_ })
     foreach ($lim in $resp.limits) {
-        if ($lim.scope.model.display_name -eq $displayName) {
-            return [PSCustomObject]@{
-                utilization = [double]$lim.percent
-                resets_at   = $lim.resets_at
+        $limitNames = @(Get-ClaudeLimitNames $lim $spec | ForEach-Object { ConvertTo-ClaudeQuotaMatchKey $_ })
+        foreach ($name in $limitNames) {
+            foreach ($match in $matches) {
+                if ($name -eq $match -or ($match -and $name.EndsWith($match))) {
+                    return ConvertTo-ClaudeQuotaWindow $lim
+                }
             }
         }
     }
     return $null
+}
+
+function Normalize-ClaudeQuotaWindows([object]$resp) {
+    if (-not $resp) { return $resp }
+
+    foreach ($spec in Get-ClaudeQuotaWindowSpecs) {
+        $existing = Get-PropertyValue $resp $spec.Field
+        if ($null -eq $existing) {
+            $existing = Get-ScopedLimit $resp $spec
+        }
+        if ($null -ne $existing) {
+            $resp | Add-Member -NotePropertyName $spec.Field -NotePropertyValue (ConvertTo-ClaudeQuotaWindow $existing) -Force
+        }
+    }
+
+    return $resp
 }
 
 function ConvertTo-ClaudeIdentity {
@@ -69,6 +147,86 @@ function ConvertTo-ClaudeIdentity {
     }
 }
 
+function Get-ClaudeBackoffPath {
+    Join-Path $script:AppDir 'claude-backoff.json'
+}
+
+function Get-ClaudeBackoffUntil {
+    try {
+        $path = Get-ClaudeBackoffPath
+        if (-not (Test-Path $path)) { return $null }
+
+        $raw = Get-Content $path -Raw -Encoding UTF8 -ErrorAction Stop
+        if (-not $raw) { return $null }
+
+        $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        if (-not $json.BackoffUntil) { return $null }
+
+        return ([System.DateTimeOffset]::Parse([string]$json.BackoffUntil)).LocalDateTime
+    } catch {
+        Write-Log "Claude backoff load failed - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Set-ClaudeBackoffUntil {
+    param([datetime]$BackoffUntil)
+
+    try {
+        [pscustomobject]@{
+            BackoffUntil = ([System.DateTimeOffset]$BackoffUntil).ToString('o')
+        } | ConvertTo-Json -Depth 3 | Set-Content -Path (Get-ClaudeBackoffPath) -Encoding UTF8
+    } catch {
+        Write-Log "Claude backoff save failed - $($_.Exception.Message)"
+    }
+}
+
+function Clear-ClaudeBackoff {
+    try {
+        $path = Get-ClaudeBackoffPath
+        if (Test-Path $path) { Remove-Item $path -Force -ErrorAction Stop }
+    } catch {
+        Write-Log "Claude backoff clear failed - $($_.Exception.Message)"
+    }
+}
+
+function ConvertFrom-RetryAfter {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+    $text = [string]$Value
+    if (-not $text) { return $null }
+
+    $seconds = 0
+    if ([int]::TryParse($text, [ref]$seconds)) {
+        return (Get-Date).AddSeconds([math]::Max(60, $seconds))
+    }
+
+    try {
+        return ([System.DateTimeOffset]::Parse($text)).LocalDateTime
+    } catch {
+        return $null
+    }
+}
+
+function Get-ResponseRetryAfter {
+    param($Response)
+
+    if (-not $Response) { return $null }
+
+    try {
+        $header = $Response.Headers['Retry-After']
+        if ($header) { return ConvertFrom-RetryAfter $header }
+    } catch { }
+
+    try {
+        $values = $Response.Headers.GetValues('Retry-After')
+        if ($values -and $values.Count -gt 0) { return ConvertFrom-RetryAfter $values[0] }
+    } catch { }
+
+    return $null
+}
+
 function Get-ClaudeProfile {
     param(
         [Parameter(Mandatory = $true)][string]$Token,
@@ -82,7 +240,19 @@ function Get-ClaudeProfile {
 }
 
 function Get-Usage {
-    param([int]$TimeoutSec = 20)
+    param(
+        [int]$TimeoutSec = 20,
+        [switch]$Force
+    )
+
+    if (-not $Force) {
+        $backoffUntil = Get-ClaudeBackoffUntil
+        if ($backoffUntil -and $backoffUntil -gt (Get-Date)) {
+            $script:State.Status = 'stale'
+            $script:State.Message = "Rate limited until $($backoffUntil.ToString('HH:mm'))"
+            return
+        }
+    }
 
     $tok = $null
     try { $tok = (Get-Content $script:CredPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch {
@@ -93,13 +263,10 @@ function Get-Usage {
         $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
             Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
         }
-        # Fable (and future per-model caps) live in the limits[] array as
-        # weekly_scoped entries, not as top-level seven_day_* fields. Surface
-        # Fable under the legacy field shape so the rest of the app is uniform.
-        $fable = Get-ScopedLimit $resp 'Fable'
-        $resp | Add-Member -NotePropertyName seven_day_fable -NotePropertyValue $fable -Force
+        $resp = Normalize-ClaudeQuotaWindows $resp
         $script:State.Data = $resp; $script:State.Status = 'ok'
         $script:State.Message = ''; $script:State.LastFetch = (Get-Date -Format 'HH:mm')
+        Clear-ClaudeBackoff
         # Record to history ring buffer
         Add-HistorySample $resp
         Save-History
@@ -107,7 +274,15 @@ function Get-Usage {
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
         if     ($code -eq 401) { $script:State.Status = 'auth';  $script:State.Message = 'Auth expired' }
-        elseif ($code -eq 429) { $script:State.Status = 'stale'; $script:State.Message = 'Rate limited' }
+        elseif ($code -eq 429) {
+            $retryUntil = Get-ResponseRetryAfter $_.Exception.Response
+            if (-not $retryUntil -or $retryUntil -lt (Get-Date).AddMinutes(5)) {
+                $retryUntil = (Get-Date).AddMinutes(15)
+            }
+            Set-ClaudeBackoffUntil $retryUntil
+            $script:State.Status = 'stale'
+            $script:State.Message = "Rate limited until $($retryUntil.ToString('HH:mm'))"
+        }
         else                   { $script:State.Status = 'stale'; $script:State.Message = $_.Exception.Message }
     }
 

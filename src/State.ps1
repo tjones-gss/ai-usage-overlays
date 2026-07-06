@@ -140,14 +140,66 @@ function Position-Window {
     }
 }
 
+function Get-ClaudeQuotaExportWindowSpecs {
+    @(
+        [PSCustomObject]@{ Field = 'seven_day_fable';      Label = 'Fable' }
+        [PSCustomObject]@{ Field = 'seven_day_opus';       Label = 'Opus' }
+        [PSCustomObject]@{ Field = 'seven_day_sonnet';     Label = 'Sonnet' }
+        [PSCustomObject]@{ Field = 'seven_day_oauth_apps'; Label = 'OAuth apps' }
+        [PSCustomObject]@{ Field = 'seven_day_omelette';   Label = 'Omelette' }
+        [PSCustomObject]@{ Field = 'seven_day_cowork';     Label = 'Cowork' }
+    )
+}
+
+function Format-ClaudeQuotaWindowLine {
+    param(
+        [string]$Label,
+        [object]$Window,
+        [switch]$IncludeUtilization
+    )
+
+    if (-not $Window) { return $null }
+
+    $used = [math]::Round([double]$Window.utilization)
+    $remaining = [math]::Round(100 - [double]$Window.utilization)
+    $suffixParts = @()
+    if ($IncludeUtilization) { $suffixParts += "$used% used" }
+    $reset = Format-Reset $Window.resets_at
+    if ($reset) { $suffixParts += $reset }
+    $suffix = if ($suffixParts.Count -gt 0) { '  (' + ($suffixParts -join ', ') + ')' } else { '' }
+
+    return ('{0}:  {1}% remaining{2}' -f $Label, $remaining, $suffix)
+}
+
+function Get-ClaudeQuotaStatLines {
+    param(
+        [object]$Data,
+        [string]$Prefix = ''
+    )
+
+    if (-not $Data) { return @() }
+
+    $lines = @()
+    if ($Data.five_hour) {
+        $lines += Format-ClaudeQuotaWindowLine "$($Prefix)5-hour" $Data.five_hour
+    }
+    if ($Data.seven_day) {
+        $lines += Format-ClaudeQuotaWindowLine "$($Prefix)weekly" $Data.seven_day
+    }
+    foreach ($spec in Get-ClaudeQuotaExportWindowSpecs) {
+        $window = $Data.PSObject.Properties[$spec.Field].Value
+        if ($window) {
+            $lines += Format-ClaudeQuotaWindowLine "$Prefix$($spec.Label)" $window -IncludeUtilization
+        }
+    }
+    return $lines
+}
+
 function Copy-Stats {
     $d = $script:State.Data; $s = $script:Stats
     $lines = @("Claude Code Usage - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
     if ($d) {
-        $lines += "5-hour:  $([math]::Round(100-[double]$d.five_hour.utilization))% remaining  ($(Format-Reset $d.five_hour.resets_at))"
-        $lines += "Weekly:  $([math]::Round(100-[double]$d.seven_day.utilization))% remaining  ($(Format-Reset $d.seven_day.resets_at))"
-        if ($d.seven_day_fable)  { $lines += "Fable:   $([math]::Round(100-[double]$d.seven_day_fable.utilization))% remaining" }
-        if ($d.seven_day_opus)   { $lines += "Opus:    $([math]::Round(100-[double]$d.seven_day_opus.utilization))% remaining" }
+        $lines += Get-ClaudeQuotaStatLines $d
     }
     if ($s) {
         $lines += "Est. API value: ~$(Fmt-Money $s.ValueUSD) all-time"

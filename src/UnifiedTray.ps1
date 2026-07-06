@@ -58,11 +58,22 @@ function Quit-App {
     if ($script:pollTimer) { $script:pollTimer.Stop() }
     if ($script:tickTimer) { $script:tickTimer.Stop() }
     if ($script:jobTimer)  { $script:jobTimer.Stop() }
+    if ($script:updateAutoTimer) { $script:updateAutoTimer.Stop() }
+    if ($script:updateStartupTimer) { $script:updateStartupTimer.Stop() }
+    if ($script:updateJobTimer) { $script:updateJobTimer.Stop() }
     if ($script:pollJobs) {
         foreach ($job in @($script:pollJobs.Values)) {
             Remove-Job $job -Force -ErrorAction SilentlyContinue
         }
         $script:pollJobs.Clear()
+    }
+    if ($script:updateJobs) {
+        foreach ($job in @($script:updateJobs.Values)) {
+            if ($job -is [System.Management.Automation.Job]) {
+                Remove-Job $job -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $script:updateJobs.Clear()
     }
     if ($script:notify)    { $script:notify.Visible = $false; $script:notify.Dispose() }
     $script:window.Close()
@@ -75,7 +86,7 @@ function Invoke-ManualRefresh {
         $script:State.Message = 'refreshing...'
     }
 
-    Start-AllRefreshJobs
+    Start-AllRefreshJobs -Force
 
     if ($script:jobTimer -and -not $script:jobTimer.IsEnabled) {
         $script:jobTimer.Start()
@@ -92,6 +103,7 @@ $script:themeItems   = @{}
 $script:opacityItems = @{}
 $script:sectionItems = @{}
 $script:updateItems  = @{}
+$script:updateJobs   = @{}
 
 # Dark colour table for the strip renderer
 # Resolve already-loaded assembly paths so Add-Type can find them under .NET 6+
@@ -226,10 +238,40 @@ function Show-AppUpdateMessage {
     [void][System.Windows.Forms.MessageBox]::Show($Message, $Title)
 }
 
+$script:AppUpdateCheckScript = {
+    param([string]$AppDir, [string]$ErrLog)
+
+    $script:AppDir = $AppDir
+    $script:ErrLog = $ErrLog
+
+    . (Join-Path $AppDir 'src\Config.ps1')
+    . (Join-Path $AppDir 'src\Update.ps1')
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Test-AppUpdateAvailable
+}
+
+function Test-AppUpdateCheckJobRunning {
+    if (-not $script:updateJobs -or -not $script:updateJobs.ContainsKey('UpdateCheck')) { return $false }
+
+    $job = $script:updateJobs['UpdateCheck']
+    return ($job.State -eq 'Running' -or $job.State -eq 'NotStarted')
+}
+
 function Sync-UpdateMenuItems {
     if (-not $script:updateItems -or -not $script:updateItems.ContainsKey('install')) { return }
 
     $state = $script:UpdateState
+    $checking = Test-AppUpdateCheckJobRunning
+    if ($script:updateItems.ContainsKey('check')) {
+        $script:updateItems['check'].Enabled = -not $checking
+        $script:updateItems['check'].Text = if ($checking) { 'Checking for updates...' } else { 'Check for updates' }
+    }
+
+    if ($script:updateItems.ContainsKey('auto')) {
+        $script:updateItems['auto'].Checked = [bool]$script:Cfg.AutoCheckUpdates
+    }
+
     $script:updateItems['install'].Enabled = ($state.Status -eq 'available' -and [bool]$state.DownloadUrl)
     if ($state.Status -eq 'available' -and $state.LatestVersion) {
         $script:updateItems['install'].Text = "Install update $($state.LatestVersion)"
@@ -242,18 +284,126 @@ function Sync-UpdateMenuItems {
     }
 }
 
-function Invoke-ManualUpdateCheck {
-    if ($script:updateItems.ContainsKey('check')) { $script:updateItems['check'].Enabled = $false }
+function Start-AppUpdateBackgroundCheck {
+    param([switch]$Automatic)
+
+    if ($Automatic -and -not [bool]$script:Cfg.AutoCheckUpdates) { return $false }
+    if (Test-AppUpdateCheckJobRunning) { return $false }
+
+    if ($script:updateJobs.ContainsKey('UpdateCheck')) {
+        Remove-Job $script:updateJobs['UpdateCheck'] -Force -ErrorAction SilentlyContinue
+        $script:updateJobs.Remove('UpdateCheck')
+    }
+
+    $script:UpdateState.Status = 'checking'
+    $script:UpdateState.Message = 'Checking for updates...'
+    $script:updateJobs['UpdateCheckAutomatic'] = [bool]$Automatic
+    $script:updateJobs['UpdateCheck'] = Start-OverlayBackgroundJob -ScriptBlock $script:AppUpdateCheckScript -ArgumentList @($script:AppDir, $script:ErrLog)
+    Sync-UpdateMenuItems
+
+    if ($script:updateJobTimer -and -not $script:updateJobTimer.IsEnabled) {
+        $script:updateJobTimer.Start()
+    }
+
+    return $true
+}
+
+function Invoke-AutomaticUpdateCheck {
+    if (-not (Test-AppUpdateAutoCheckDue -Enabled ([bool]$script:Cfg.AutoCheckUpdates) -LastCheckedAt $script:UpdateState.CheckedAt)) {
+        return $false
+    }
+
+    return Start-AppUpdateBackgroundCheck -Automatic
+}
+
+function Complete-AppUpdateCheckJobs {
+    if (-not $script:updateJobs -or -not $script:updateJobs.ContainsKey('UpdateCheck')) { return $false }
+
+    $job = $script:updateJobs['UpdateCheck']
+    if ($job.State -eq 'Running' -or $job.State -eq 'NotStarted') { return $false }
+
+    $automatic = [bool]$script:updateJobs['UpdateCheckAutomatic']
+    $completed = $false
+
     try {
-        $info = Test-AppUpdateAvailable
+        $results = @(Receive-Job $job -ErrorAction SilentlyContinue)
+        $info = $results | Where-Object { $_ -and $_.PSObject.Properties['Status'] } | Select-Object -Last 1
+        if (-not $info) {
+            $info = New-AppUpdateInfo -Status 'error' -Message 'Update check failed: no result returned.' -CurrentVersion $script:AppVersion
+        }
+
         Set-AppUpdateState $info
         Sync-UpdateMenuItems
 
-        $icon = if ($info.Status -eq 'error') { [System.Windows.Forms.ToolTipIcon]::Warning } else { [System.Windows.Forms.ToolTipIcon]::Info }
-        Show-AppUpdateMessage 'AI Usage Overlay Updates' $info.Message $icon
+        if ($automatic) {
+            if ($info.Status -eq 'available' -and (Test-AppUpdateNotificationDue -Info $info -LastNotifiedVersion $script:Cfg.LastNotifiedUpdateVersion)) {
+                Show-AppUpdateMessage 'AI Usage Overlay Updates' $info.Message ([System.Windows.Forms.ToolTipIcon]::Info)
+                $script:Cfg.LastNotifiedUpdateVersion = Get-AppUpdateVersionKey $info
+                Save-UnifiedState
+            } elseif ($info.Status -eq 'error') {
+                try { Write-Log $info.Message } catch { }
+            }
+        } else {
+            $icon = if ($info.Status -eq 'error') { [System.Windows.Forms.ToolTipIcon]::Warning } else { [System.Windows.Forms.ToolTipIcon]::Info }
+            Show-AppUpdateMessage 'AI Usage Overlay Updates' $info.Message $icon
+        }
+
+        $completed = $true
+    } catch {
+        $info = New-AppUpdateInfo -Status 'error' -Message "Update check failed: $($_.Exception.Message)" -CurrentVersion $script:AppVersion
+        Set-AppUpdateState $info
+        Sync-UpdateMenuItems
+        if ($automatic) {
+            try { Write-Log $info.Message } catch { }
+        } else {
+            Show-AppUpdateMessage 'AI Usage Overlay Updates' $info.Message ([System.Windows.Forms.ToolTipIcon]::Warning)
+        }
+        $completed = $true
     } finally {
-        if ($script:updateItems.ContainsKey('check')) { $script:updateItems['check'].Enabled = $true }
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+        $script:updateJobs.Remove('UpdateCheck')
+        $script:updateJobs.Remove('UpdateCheckAutomatic')
+        Sync-UpdateMenuItems
+        if ($script:updateJobTimer -and -not (Test-AppUpdateCheckJobRunning)) {
+            $script:updateJobTimer.Stop()
+        }
     }
+
+    return $completed
+}
+
+function Start-AutoUpdateChecks {
+    Sync-UpdateMenuItems
+
+    if (-not $script:updateJobTimer) {
+        $script:updateJobTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:updateJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+        $script:updateJobTimer.add_Tick({ [void](Complete-AppUpdateCheckJobs) })
+    }
+
+    if (-not $script:updateStartupTimer) {
+        $script:updateStartupTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:updateStartupTimer.Interval = [TimeSpan]::FromSeconds(20)
+        $script:updateStartupTimer.add_Tick({
+            $script:updateStartupTimer.Stop()
+            [void](Invoke-AutomaticUpdateCheck)
+        })
+    }
+
+    if (-not $script:updateAutoTimer) {
+        $script:updateAutoTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:updateAutoTimer.Interval = [TimeSpan]::FromMinutes(15)
+        $script:updateAutoTimer.add_Tick({ [void](Invoke-AutomaticUpdateCheck) })
+    }
+
+    if ([bool]$script:Cfg.AutoCheckUpdates) {
+        $script:updateStartupTimer.Start()
+        $script:updateAutoTimer.Start()
+    }
+}
+
+function Invoke-ManualUpdateCheck {
+    [void](Start-AppUpdateBackgroundCheck)
 }
 
 function Invoke-InstallCheckedUpdate {
@@ -271,52 +421,132 @@ function Invoke-InstallCheckedUpdate {
 # ---------------------------------------------------------------------------
 # Threshold alert system
 # ---------------------------------------------------------------------------
-$script:Notified = @{ five_hour = 0; seven_day = 0; seven_day_fable = 0; seven_day_opus = 0 }
+$script:AlertKeys = @('five_hour', 'seven_day', 'seven_day_fable', 'seven_day_opus')
+$script:Notified = @{}
+foreach ($alertKey in $script:AlertKeys) {
+    $script:Notified[$alertKey] = @{ Level = 0; Reset = $null }
+}
 
-function Check-Alert([string]$key, $util) {
+function Get-AlertLabel([string]$key) {
+    switch ($key) {
+        'five_hour'        { '5-hour session' }
+        'seven_day'        { 'Weekly limit' }
+        'seven_day_fable'  { 'Fable weekly' }
+        'seven_day_opus'   { 'Opus weekly' }
+        default            { $key }
+    }
+}
+
+function Get-AlertResetWindow([string]$key, $resetAt = $null) {
+    if ($null -eq $resetAt -and $script:State -and $script:State.Data) {
+        $quota = $script:State.Data.PSObject.Properties[$key]
+        if ($quota -and $quota.Value) {
+            $resetProp = $quota.Value.PSObject.Properties['resets_at']
+            if ($resetProp) { $resetAt = $resetProp.Value }
+        }
+    }
+
+    if ($null -eq $resetAt) { return $null }
+    return [string]$resetAt
+}
+
+function Get-AlertState([string]$key, $resetWindow = $null) {
+    if (-not $script:Notified) { $script:Notified = @{} }
+    if (-not $script:Notified.ContainsKey($key)) {
+        $script:Notified[$key] = @{ Level = 0; Reset = $resetWindow }
+    }
+
+    $state = $script:Notified[$key]
+    if ($state -isnot [System.Collections.IDictionary]) {
+        $state = @{ Level = [int]$state; Reset = $resetWindow }
+        $script:Notified[$key] = $state
+    } elseif ($resetWindow -and $state['Reset'] -and $state['Reset'] -ne $resetWindow) {
+        $state['Level'] = 0
+        $state['Reset'] = $resetWindow
+    } elseif ($resetWindow -and -not $state['Reset']) {
+        $state['Reset'] = $resetWindow
+    }
+
+    return $state
+}
+
+function Set-AlertState([string]$key, [int]$level, $resetWindow = $null) {
+    $state = Get-AlertState $key $resetWindow
+    $state['Level'] = $level
+    $state['Reset'] = $resetWindow
+}
+
+function Get-AlertLevel($util) {
+    if ($null -eq $util) { return 0 }
+    $u = [double]$util
+    if ($u -ge $script:CritPct) { return [int]$script:CritPct }
+    if ($u -ge $script:WarnPct) { return [int]$script:WarnPct }
+    return 0
+}
+
+function Invoke-TestAlert {
+    if (-not $script:notify) { return }
+    $script:notify.ShowBalloonTip(
+        4000,
+        'AI Usage Overlay Test',
+        'Threshold alerts are working.',
+        [System.Windows.Forms.ToolTipIcon]::Info
+    )
+}
+
+function Dismiss-CurrentAlerts {
+    if (-not $script:State -or -not $script:State.Data) { return }
+
+    foreach ($key in $script:AlertKeys) {
+        $quota = $script:State.Data.PSObject.Properties[$key]
+        if (-not $quota -or -not $quota.Value) { continue }
+
+        $utilProp = $quota.Value.PSObject.Properties['utilization']
+        if (-not $utilProp) { continue }
+
+        $level = Get-AlertLevel $utilProp.Value
+        if ($level -le 0) { continue }
+
+        $resetProp = $quota.Value.PSObject.Properties['resets_at']
+        $resetWindow = if ($resetProp) { Get-AlertResetWindow $key $resetProp.Value } else { Get-AlertResetWindow $key }
+        Set-AlertState $key $level $resetWindow
+    }
+}
+
+function Check-Alert([string]$key, $util, $resetAt = $null) {
     if (-not [bool]$script:Cfg.ShowAlerts) { return }
     if (-not $script:notify) { return }
     if ($null -eq $util) { return }
 
-    $u    = [double]$util
-    $last = if ($script:Notified.ContainsKey($key)) { $script:Notified[$key] } else { 0 }
+    $u = [double]$util
+    $resetWindow = Get-AlertResetWindow $key $resetAt
+    $state = Get-AlertState $key $resetWindow
+    $last = [int]$state['Level']
 
     # Reset when usage drops back below warn threshold
     if ($u -lt $script:WarnPct) {
-        $script:Notified[$key] = 0
+        Set-AlertState $key 0 $resetWindow
         return
     }
 
     # Fire CRITICAL alert (crosses into CritPct band)
     if ($u -ge $script:CritPct -and $last -lt $script:CritPct) {
-        $label = switch ($key) {
-            'five_hour'        { '5-hour session' }
-            'seven_day'        { 'Weekly limit' }
-            'seven_day_fable'  { 'Fable weekly' }
-            'seven_day_opus'   { 'Opus weekly' }
-            default            { $key }
-        }
+        $label = Get-AlertLabel $key
         $eta = ''
         if ($script:History -and $script:History.Count -gt 2) {
             $mins = Get-Eta $script:History $key
             if ($null -ne $mins) { $eta = " (~$mins min to limit)" }
         }
         $script:notify.ShowBalloonTip(5000, 'Claude Usage Critical', "$label at $([int]$u)%$eta", [System.Windows.Forms.ToolTipIcon]::Warning)
-        $script:Notified[$key] = $script:CritPct
+        Set-AlertState $key ([int]$script:CritPct) $resetWindow
         return
     }
 
     # Fire WARN alert (crosses into WarnPct band)
     if ($u -ge $script:WarnPct -and $last -lt $script:WarnPct) {
-        $label = switch ($key) {
-            'five_hour'        { '5-hour session' }
-            'seven_day'        { 'Weekly limit' }
-            'seven_day_fable'  { 'Fable weekly' }
-            'seven_day_opus'   { 'Opus weekly' }
-            default            { $key }
-        }
+        $label = Get-AlertLabel $key
         $script:notify.ShowBalloonTip(4000, 'Claude Usage Warning', "$label at $([int]$u)%", [System.Windows.Forms.ToolTipIcon]::Info)
-        $script:Notified[$key] = $script:WarnPct
+        Set-AlertState $key ([int]$script:WarnPct) $resetWindow
         return
     }
 }
@@ -327,12 +557,35 @@ function Check-Alert([string]$key, $util) {
 
 # Actions
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Refresh now' { Invoke-ManualRefresh }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Test alert' { Invoke-TestAlert }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Dismiss current alert' { Dismiss-CurrentAlerts }))
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
 Add-Separator
 
 # Updates
+$miAutoUpdate = New-StripItem 'Automatically check for updates' {
+    $script:Cfg.AutoCheckUpdates = -not [bool]$script:Cfg.AutoCheckUpdates
+    $miAutoUpdate.Checked = [bool]$script:Cfg.AutoCheckUpdates
+    Save-UnifiedState
+
+    if ([bool]$script:Cfg.AutoCheckUpdates) {
+        if ($script:updateAutoTimer) { $script:updateAutoTimer.Start() }
+        if ($script:updateStartupTimer -and -not $script:UpdateState.CheckedAt) { $script:updateStartupTimer.Start() }
+        [void](Invoke-AutomaticUpdateCheck)
+    } else {
+        if ($script:updateAutoTimer) { $script:updateAutoTimer.Stop() }
+        if ($script:updateStartupTimer) { $script:updateStartupTimer.Stop() }
+    }
+
+    Sync-UpdateMenuItems
+}
+$miAutoUpdate.CheckOnClick = $false
+$miAutoUpdate.Checked = [bool]$script:Cfg.AutoCheckUpdates
+$script:updateItems['auto'] = $miAutoUpdate
+[void]$script:ctxStrip.Items.Add($miAutoUpdate)
+
 $miCheckUpdate = New-StripItem 'Check for updates' { Invoke-ManualUpdateCheck }
 $script:updateItems['check'] = $miCheckUpdate
 [void]$script:ctxStrip.Items.Add($miCheckUpdate)

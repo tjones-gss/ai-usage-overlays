@@ -8,7 +8,7 @@ $script:TickSeconds    = 30
 $script:BarTrackWidth  = 250.0
 $script:WarnPct        = 80
 $script:CritPct        = 95
-$script:AppVersion     = '0.1.2'
+$script:AppVersion     = '0.2.0'
 $script:RepoOwner      = 'tjones-gss'
 $script:RepoName       = 'ai-usage-overlays'
 $script:UpdateChannel  = 'release'
@@ -124,4 +124,6 @@ $script:Cfg = @{
     Theme       = 'Deep Space'
     ShowAlerts  = $true    # NEW: enable threshold balloon alerts
     ShowGraph   = $false   # NEW: show history sparkline (off by default to keep panel compact)
+    AutoCheckUpdates = $true
+    LastNotifiedUpdateVersion = $null
 }

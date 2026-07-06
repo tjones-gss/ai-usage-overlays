@@ -85,6 +85,41 @@ Describe 'Test-AppUpdateAvailable' {
     }
 }
 
+Describe 'Automatic update check gating' {
+    It 'is not due when automatic checks are disabled' {
+        Test-AppUpdateAutoCheckDue -Enabled:$false -LastCheckedAt $null | Should -BeFalse
+    }
+
+    It 'is due when no prior update check has completed' {
+        Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $null | Should -BeTrue
+    }
+
+    It 'waits until the configured interval has elapsed' {
+        $now = [datetime]'2026-07-06T12:00:00'
+
+        Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $now.AddHours(-23) -Now $now -IntervalHours 24 | Should -BeFalse
+        Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $now.AddHours(-24) -Now $now -IntervalHours 24 | Should -BeTrue
+    }
+}
+
+Describe 'Automatic update notification gating' {
+    It 'notifies once for an available release version' {
+        $info = [pscustomobject]@{
+            Status = 'available'
+            LatestVersion = 'v1.2.0'
+            DownloadUrl = 'https://example.test/AIUsageOverlaySetup.exe'
+        }
+
+        Test-AppUpdateNotificationDue -Info $info -LastNotifiedVersion $null | Should -BeTrue
+        Test-AppUpdateNotificationDue -Info $info -LastNotifiedVersion 'v1.2.0' | Should -BeFalse
+    }
+
+    It 'does not notify for current or failed checks' {
+        Test-AppUpdateNotificationDue -Info ([pscustomobject]@{ Status = 'current'; LatestVersion = 'v1.2.0' }) -LastNotifiedVersion $null | Should -BeFalse
+        Test-AppUpdateNotificationDue -Info ([pscustomobject]@{ Status = 'error'; LatestVersion = $null }) -LastNotifiedVersion $null | Should -BeFalse
+    }
+}
+
 Describe 'Install-AppUpdate' {
     It 'downloads and starts the setup installer for an available update' {
         Mock Save-DownloadedUpdate { Join-Path $TestDrive 'AIUsageOverlaySetup.exe' }
