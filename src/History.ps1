@@ -1,8 +1,21 @@
-# History.ps1 — usage history ring buffer and burn-rate / ETA projection
+# History.ps1 - usage history ring buffer and burn-rate / ETA projection
 
 $script:HistoryPath   = Join-Path $script:AppDir 'overlay-history.json'
 $script:History       = [System.Collections.Generic.List[object]]::new()
 $script:HistoryMaxLen = 480   # ~24h at 3-min polling intervals
+
+function Get-ClaudeHistoryQuotaFields {
+    @(
+        'five_hour'
+        'seven_day'
+        'seven_day_fable'
+        'seven_day_opus'
+        'seven_day_sonnet'
+        'seven_day_oauth_apps'
+        'seven_day_omelette'
+        'seven_day_cowork'
+    )
+}
 
 function Load-History {
     try {
@@ -20,13 +33,14 @@ function Load-History {
 
 function Add-HistorySample([object]$data) {
     # $data is the API response object from Get-Usage ($script:State.Data)
-    $sample = [PSCustomObject]@{
-        t               = (Get-Date -Format 'o')  # ISO 8601
-        five_hour       = if ($data.five_hour)        { [double]$data.five_hour.utilization }        else { $null }
-        seven_day       = if ($data.seven_day)         { [double]$data.seven_day.utilization }         else { $null }
-        seven_day_sonnet = if ($data.seven_day_sonnet) { [double]$data.seven_day_sonnet.utilization }  else { $null }
-        seven_day_opus  = if ($data.seven_day_opus)   { [double]$data.seven_day_opus.utilization }    else { $null }
+    $sampleData = [ordered]@{
+        t = (Get-Date -Format 'o')  # ISO 8601
     }
+    foreach ($field in Get-ClaudeHistoryQuotaFields) {
+        $window = if ($data) { $data.PSObject.Properties[$field].Value } else { $null }
+        $sampleData[$field] = if ($window) { [double]$window.utilization } else { $null }
+    }
+    $sample = [PSCustomObject]$sampleData
     $script:History.Add($sample)
     # Trim to ring buffer max
     while ($script:History.Count -gt $script:HistoryMaxLen) {
@@ -75,7 +89,7 @@ function Get-Eta {
     if ([math]::Abs($denom) -lt 1e-10) { return $null }  # perfectly flat / single point
 
     $b = ($n * $sumXY - $sumX * $sumY) / $denom  # slope (util % per minute)
-    if ($b -le 0) { return $null }  # not increasing — no ETA
+    if ($b -le 0) { return $null }  # not increasing - no ETA
 
     # Current util = last sample's value
     $currentUtil = $ys[-1]
@@ -83,6 +97,6 @@ function Get-Eta {
 
     # Minutes to reach 100%
     $etaMinutes = (100.0 - $currentUtil) / $b
-    if ($etaMinutes -gt 1440) { return $null }  # more than 24h away — not useful
+    if ($etaMinutes -gt 1440) { return $null }  # more than 24h away - not useful
     return [int][math]::Ceiling($etaMinutes)
 }

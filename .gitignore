@@ -2,4 +2,9 @@
 *.pid
 *-state.json
 *-error.log
+*-cache.json
+overlay-history.json
+.codegraph/
 .worktrees
+dist/
+packaging/build/
