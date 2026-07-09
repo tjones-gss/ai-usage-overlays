@@ -33,27 +33,36 @@ Describe 'ConvertTo-ClaudeIdentity' {
 
 Describe 'Get-Usage Claude profile behavior' {
     BeforeEach {
+        # Isolate every persisted file (creds, backoff, profile cache) per test.
+        $script:AppDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null
+        $script:CredPath = Join-Path $script:AppDir '.credentials.json'
         Set-Content -Path $script:CredPath -Encoding UTF8 -Value '{"claudeAiOauth":{"accessToken":"token-123"}}'
         $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
         $script:ClaudeIdentity = $null
         function Add-HistorySample { param($data) }
         function Save-History { }
-    }
 
-    It 'stores Claude identity when usage and profile fetches succeed' {
-        Mock Invoke-RestMethod {
+        # Defined here (not in the Describe body) so they exist at run time under
+        # Pester 5's discovery/run split.
+        $script:usageOk = {
             [pscustomobject]@{
                 five_hour = [pscustomobject]@{ utilization = 10; resets_at = '2026-07-06T18:00:00Z' }
                 seven_day = [pscustomobject]@{ utilization = 20; resets_at = '2026-07-13T18:00:00Z' }
                 limits = @()
             }
-        } -ParameterFilter { $Uri -like '*oauth/usage' }
-        Mock Invoke-RestMethod {
+        }
+        $script:profileOk = {
             [pscustomobject]@{
                 account = [pscustomobject]@{ email = 'dev@example.test' }
                 organization = [pscustomobject]@{ name = 'Example Org'; uuid = 'org-123' }
             }
-        } -ParameterFilter { $Uri -like '*oauth/profile' }
+        }
+    }
+
+    It 'stores Claude identity when usage and profile fetches succeed' {
+        Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod $script:profileOk -ParameterFilter { $Uri -like '*oauth/profile' }
 
         Get-Usage
 
@@ -62,13 +71,7 @@ Describe 'Get-Usage Claude profile behavior' {
     }
 
     It 'keeps usage data when the profile fetch fails' {
-        Mock Invoke-RestMethod {
-            [pscustomobject]@{
-                five_hour = [pscustomobject]@{ utilization = 10; resets_at = '2026-07-06T18:00:00Z' }
-                seven_day = [pscustomobject]@{ utilization = 20; resets_at = '2026-07-13T18:00:00Z' }
-                limits = @()
-            }
-        } -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
         Mock Invoke-RestMethod { throw 'profile down' } -ParameterFilter { $Uri -like '*oauth/profile' }
 
         Get-Usage
@@ -76,6 +79,126 @@ Describe 'Get-Usage Claude profile behavior' {
         $script:State.Status | Should -Be 'ok'
         $script:State.Data | Should -Not -BeNullOrEmpty
         $script:ClaudeIdentity | Should -BeNullOrEmpty
+    }
+
+    It 'hits the profile endpoint at most once per token across repeated polls' {
+        Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod $script:profileOk -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage
+        Get-Usage
+        Get-Usage
+
+        Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter { $Uri -like '*oauth/profile' }
+        $script:ClaudeIdentity.Display | Should -Be 'dev@example.test / Example Org'
+    }
+
+    It 'does not retry a profile fetch that already failed for the same token' {
+        Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod { throw 'profile down' } -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage
+        Get-Usage
+
+        Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter { $Uri -like '*oauth/profile' }
+    }
+
+    It 'refetches the profile after the token rotates' {
+        Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod $script:profileOk -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage
+        Set-Content -Path $script:CredPath -Encoding UTF8 -Value '{"claudeAiOauth":{"accessToken":"token-999"}}'
+        Get-Usage
+
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/profile' }
+    }
+}
+
+Describe 'Get-Usage failure backoff' {
+    BeforeEach {
+        $script:AppDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null
+        $script:CredPath = Join-Path $script:AppDir '.credentials.json'
+        Set-Content -Path $script:CredPath -Encoding UTF8 -Value '{"claudeAiOauth":{"accessToken":"token-123"}}'
+        $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
+        $script:ClaudeIdentity = $null
+        function Add-HistorySample { param($data) }
+        function Save-History { }
+    }
+
+    It 'backs off on a 401 and skips the profile call' {
+        Mock Invoke-RestMethod {
+            $ex = [System.Exception]::new('401 Unauthorized')
+            $ex | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 401 })
+            throw $ex
+        } -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod { throw 'should not be called' } -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage
+
+        $script:State.Status | Should -Be 'auth'
+        $script:State.Message | Should -Be 'Auth expired'
+        (Get-ClaudeBackoffState).Until | Should -BeGreaterThan (Get-Date)
+        Should -Invoke Invoke-RestMethod -Times 0 -Exactly -ParameterFilter { $Uri -like '*oauth/profile' }
+    }
+
+    It 'early-returns while an auth backoff is active and replays its cause' {
+        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(10) -FailureCount 1 -Status 'auth' -Message 'Auth expired'
+        Mock Invoke-RestMethod { throw 'network must not be touched' }
+
+        Get-Usage
+
+        $script:State.Status | Should -Be 'auth'
+        $script:State.Message | Should -Be 'Auth expired'
+        Should -Invoke Invoke-RestMethod -Times 0 -Exactly
+    }
+
+    It 'clears the backoff on a successful fetch' {
+        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(10) -FailureCount 3 -Status 'auth' -Message 'Auth expired'
+        Mock Invoke-RestMethod {
+            [pscustomobject]@{
+                five_hour = [pscustomobject]@{ utilization = 10; resets_at = '2026-07-06T18:00:00Z' }
+                seven_day = [pscustomobject]@{ utilization = 20; resets_at = '2026-07-13T18:00:00Z' }
+                limits = @()
+            }
+        } -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod { [pscustomobject]@{ account = [pscustomobject]@{ email = 'x@y.z' } } } -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage -Force
+
+        $script:State.Status | Should -Be 'ok'
+        Get-ClaudeBackoffState | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Register-ClaudeFailure escalation' {
+    BeforeEach { $script:AppDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null }
+
+    It 'escalates the delay as consecutive failures accrue' {
+        $now = Get-Date
+        $first = Register-ClaudeFailure -Status 'stale' -Message 'x' -MinSeconds 60
+        $second = Register-ClaudeFailure -Status 'stale' -Message 'x' -MinSeconds 60
+        $third = Register-ClaudeFailure -Status 'stale' -Message 'x' -MinSeconds 60
+
+        (Get-ClaudeBackoffState).FailureCount | Should -Be 3
+        ($second - $now).TotalSeconds | Should -BeGreaterThan ($first - $now).TotalSeconds
+        ($third - $now).TotalSeconds | Should -BeGreaterThan ($second - $now).TotalSeconds
+    }
+
+    It 'honors a server Retry-After over the exponential default' {
+        $retryAt = (Get-Date).AddHours(1)
+        $until = Register-ClaudeFailure -Status 'stale' -Message '' -RetryAfter $retryAt -MinSeconds 900
+
+        [math]::Abs(($until - $retryAt).TotalSeconds) | Should -BeLessThan 2
+    }
+
+    It 'caps the exponential delay at thirty minutes' {
+        $now = Get-Date
+        $until = $now
+        1..10 | ForEach-Object { $until = Register-ClaudeFailure -Status 'stale' -Message 'x' -MinSeconds 60 }
+
+        ($until - $now).TotalSeconds | Should -BeLessOrEqual 1801
     }
 }
 
