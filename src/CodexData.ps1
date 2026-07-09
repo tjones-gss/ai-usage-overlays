@@ -1,7 +1,53 @@
 # CodexData.ps1 - Codex session parsing and usage cost estimation
 
+function Get-CodexSessionDirCandidates {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($root in @($env:CODEX_HOME)) {
+        if ($root) {
+            try {
+                [void]$candidates.Add((Join-Path $root 'sessions'))
+            } catch { }
+        }
+    }
+
+    foreach ($root in @($env:USERPROFILE, $env:HOME)) {
+        if ($root) {
+            try {
+                [void]$candidates.Add((Join-Path (Join-Path $root '.codex') 'sessions'))
+            } catch { }
+        }
+    }
+
+    foreach ($root in @($env:LOCALAPPDATA, $env:APPDATA)) {
+        if ($root) {
+            try {
+                [void]$candidates.Add((Join-Path $root 'OpenAI\Codex\sessions'))
+            } catch { }
+        }
+    }
+
+    return @($candidates | Select-Object -Unique)
+}
+
+function Resolve-CodexSessionsDir {
+    param([string]$PreferredDir = $script:CodexSessionsDir)
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($PreferredDir) { [void]$candidates.Add($PreferredDir) }
+    foreach ($dir in Get-CodexSessionDirCandidates) {
+        if ($dir) { [void]$candidates.Add($dir) }
+    }
+
+    foreach ($dir in @($candidates | Select-Object -Unique)) {
+        if ($dir -and (Test-Path $dir)) { return $dir }
+    }
+
+    return @($candidates | Select-Object -First 1)
+}
+
 if (-not $script:CodexSessionsDir) {
-    $script:CodexSessionsDir = Join-Path $env:USERPROFILE '.codex\sessions'
+    $script:CodexSessionsDir = Resolve-CodexSessionsDir
 }
 
 $script:CodexStats = $null
@@ -241,9 +287,14 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
 function Get-CodexStats {
     $cachePath = Join-Path $script:AppDir 'codex-cache.json'
     Import-CodexStatsFileCache $cachePath
+    $sessionsDir = Resolve-CodexSessionsDir
+    if ($sessionsDir) {
+        $script:CodexSessionsDir = $sessionsDir
+    }
 
-    if (-not (Test-Path $script:CodexSessionsDir)) {
-        Write-CodexLog 'Get-CodexStats: ~/.codex/sessions not found - no session data'
+    if (-not $script:CodexSessionsDir -or -not (Test-Path $script:CodexSessionsDir)) {
+        $candidateText = (Get-CodexSessionDirCandidates) -join '; '
+        Write-CodexLog "Get-CodexStats: Codex sessions directory not found - checked: $candidateText"
         return
     }
 

@@ -142,6 +142,7 @@ Describe 'Estimate-CodexCost' {
 
 Describe 'Get-CodexStats' {
     BeforeEach {
+        $script:OriginalCodexHome = $env:CODEX_HOME
         $script:CodexSessionsDir = Join-Path $TestDrive 'sessions'
         if (Test-Path $script:CodexSessionsDir) {
             Remove-Item -Path $script:CodexSessionsDir -Recurse -Force
@@ -149,6 +150,14 @@ Describe 'Get-CodexStats' {
         New-Item -ItemType Directory -Path $script:CodexSessionsDir -Force | Out-Null
         $script:CodexStatsFileCache = @{}
         $script:CodexStats = $null
+    }
+
+    AfterEach {
+        if ($null -eq $script:OriginalCodexHome) {
+            Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
+        } else {
+            $env:CODEX_HOME = $script:OriginalCodexHome
+        }
     }
 
     It 'parses real event_msg token counts using the last cumulative event in each session file' {
@@ -252,5 +261,29 @@ Describe 'Get-CodexStats' {
         $script:CodexSessionsDir = Join-Path $TestDrive 'missing'
         { Get-CodexStats } | Should -Not -Throw
         $script:CodexStats | Should -BeNullOrEmpty
+    }
+
+    It 'discovers sessions from CODEX_HOME when the preferred sessions directory is missing' {
+        $codexHome = Join-Path $TestDrive 'codex-home'
+        $env:CODEX_HOME = $codexHome
+        $script:CodexSessionsDir = Join-Path $TestDrive 'missing-default'
+
+        $target = Join-Path $codexHome 'sessions\2026\06\10\codex-home-test.jsonl'
+        New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+        $events = @(
+            @{ timestamp='2026-06-10T10:00:00Z'; type='session_meta'; payload=@{ session_id='codex-home'; timestamp='2026-06-10T10:00:00Z' } }
+            @{ timestamp='2026-06-10T10:01:00Z'; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent '2026-06-10T10:02:00Z' 1000 250 100)
+        )
+        $jsonl = foreach ($event in $events) {
+            $event | ConvertTo-Json -Depth 10 -Compress
+        }
+        Set-Content -Path $target -Value $jsonl -Encoding UTF8
+
+        Get-CodexStats
+
+        $script:CodexSessionsDir | Should -Be (Join-Path $codexHome 'sessions')
+        $script:CodexStats.InTokens | Should -Be 1000
+        $script:CodexStats.Sessions | Should -Be 1
     }
 }
