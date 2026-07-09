@@ -151,7 +151,11 @@ function Get-ClaudeBackoffPath {
     Join-Path $script:AppDir 'claude-backoff.json'
 }
 
-function Get-ClaudeBackoffUntil {
+# Backoff state carries more than a timestamp: a running FailureCount drives
+# exponential escalation, and Status/Message are replayed on the early-return
+# path so a cooldown shows its real cause (e.g. 'Auth expired') instead of a
+# generic "Rate limited" line.
+function Get-ClaudeBackoffState {
     try {
         $path = Get-ClaudeBackoffPath
         if (-not (Test-Path $path)) { return $null }
@@ -160,25 +164,83 @@ function Get-ClaudeBackoffUntil {
         if (-not $raw) { return $null }
 
         $json = $raw | ConvertFrom-Json -ErrorAction Stop
-        if (-not $json.BackoffUntil) { return $null }
 
-        return ([System.DateTimeOffset]::Parse([string]$json.BackoffUntil)).LocalDateTime
+        $until = $null
+        if ($json.BackoffUntil) {
+            $until = ([System.DateTimeOffset]::Parse([string]$json.BackoffUntil)).LocalDateTime
+        }
+
+        return @{
+            Until        = $until
+            FailureCount = [int]($json.FailureCount)
+            Status       = [string]$json.Status
+            Message      = [string]$json.Message
+        }
     } catch {
         Write-Log "Claude backoff load failed - $($_.Exception.Message)"
         return $null
     }
 }
 
+function Get-ClaudeBackoffUntil {
+    $state = Get-ClaudeBackoffState
+    if ($state) { return $state.Until }
+    return $null
+}
+
 function Set-ClaudeBackoffUntil {
-    param([datetime]$BackoffUntil)
+    param(
+        [datetime]$BackoffUntil,
+        [int]$FailureCount = 0,
+        [string]$Status = 'stale',
+        [string]$Message = ''
+    )
 
     try {
         [pscustomobject]@{
             BackoffUntil = ([System.DateTimeOffset]$BackoffUntil).ToString('o')
+            FailureCount = $FailureCount
+            Status       = $Status
+            Message      = $Message
         } | ConvertTo-Json -Depth 3 | Set-Content -Path (Get-ClaudeBackoffPath) -Encoding UTF8
     } catch {
         Write-Log "Claude backoff save failed - $($_.Exception.Message)"
     }
+}
+
+# Record a failed usage fetch and schedule the next allowed attempt. Every
+# failure mode backs off - not just 429 - because repeatedly retrying a bad
+# token (401) or a flaky endpoint (503/network) every poll is exactly what
+# escalates into a server-side rate limit. Delay is exponential in the running
+# failure count (60s, 2m, 4m, ... capped at 30m), floored per reason, and a
+# server-supplied Retry-After (when it points meaningfully into the future)
+# always wins.
+function Register-ClaudeFailure {
+    param(
+        [string]$Status = 'stale',
+        [string]$Message = '',
+        $RetryAfter = $null,
+        [int]$MinSeconds = 60
+    )
+
+    $now = Get-Date
+
+    $state = Get-ClaudeBackoffState
+    $count = 1
+    if ($state -and $state.FailureCount -gt 0) { $count = $state.FailureCount + 1 }
+
+    if ($RetryAfter -and ([datetime]$RetryAfter) -gt $now.AddMinutes(1)) {
+        $until = [datetime]$RetryAfter
+    } else {
+        $exponent = [math]::Min(6, $count)
+        $delay = [math]::Min(1800, 60 * [math]::Pow(2, $exponent - 1))
+        $delay = [math]::Max($MinSeconds, $delay)
+        $until = $now.AddSeconds($delay)
+    }
+
+    Set-ClaudeBackoffUntil -BackoffUntil $until -FailureCount $count -Status $Status -Message $Message
+    Write-Log "Claude backoff: $Status (failure #$count) until $($until.ToString('HH:mm:ss')) - $Message"
+    return $until
 }
 
 function Clear-ClaudeBackoff {
@@ -187,6 +249,51 @@ function Clear-ClaudeBackoff {
         if (Test-Path $path) { Remove-Item $path -Force -ErrorAction Stop }
     } catch {
         Write-Log "Claude backoff clear failed - $($_.Exception.Message)"
+    }
+}
+
+# The identity behind a token is near-static, but each poll runs in a fresh
+# background process, so an in-memory cache would not survive. Persist the
+# resolved identity keyed by the token it was fetched with; the profile
+# endpoint is then hit at most once per token instead of on every poll. That
+# halves the authenticated request volume and, critically, stops a token that
+# 401s on /profile from being retried every three minutes.
+function Get-ClaudeProfilePath {
+    Join-Path $script:AppDir 'claude-profile.json'
+}
+
+function Get-CachedClaudeProfile {
+    try {
+        $path = Get-ClaudeProfilePath
+        if (-not (Test-Path $path)) { return $null }
+
+        $raw = Get-Content $path -Raw -Encoding UTF8 -ErrorAction Stop
+        if (-not $raw) { return $null }
+
+        $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        return @{
+            Token    = [string]$json.Token
+            Identity = $json.Identity
+        }
+    } catch {
+        Write-Log "Claude profile cache load failed - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Save-ClaudeProfile {
+    param(
+        [string]$Token,
+        $Identity
+    )
+
+    try {
+        [pscustomobject]@{
+            Token    = $Token
+            Identity = $Identity
+        } | ConvertTo-Json -Depth 6 | Set-Content -Path (Get-ClaudeProfilePath) -Encoding UTF8
+    } catch {
+        Write-Log "Claude profile cache save failed - $($_.Exception.Message)"
     }
 }
 
@@ -246,10 +353,13 @@ function Get-Usage {
     )
 
     if (-not $Force) {
-        $backoffUntil = Get-ClaudeBackoffUntil
-        if ($backoffUntil -and $backoffUntil -gt (Get-Date)) {
-            $script:State.Status = 'stale'
-            $script:State.Message = "Rate limited until $($backoffUntil.ToString('HH:mm'))"
+        $backoff = Get-ClaudeBackoffState
+        if ($backoff -and $backoff.Until -and $backoff.Until -gt (Get-Date)) {
+            # Replay the failure's own status/message so the cooldown reflects
+            # its real cause (auth, network, ...) rather than always reading as
+            # a rate limit.
+            if ($backoff.Status)  { $script:State.Status  = $backoff.Status }  else { $script:State.Status = 'stale' }
+            if ($backoff.Message) { $script:State.Message = $backoff.Message } else { $script:State.Message = "Rate limited until $($backoff.Until.ToString('HH:mm'))" }
             return
         }
     }
@@ -273,23 +383,42 @@ function Get-Usage {
     } catch {
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
-        if     ($code -eq 401) { $script:State.Status = 'auth';  $script:State.Message = 'Auth expired' }
-        elseif ($code -eq 429) {
+        if ($code -eq 429) {
             $retryUntil = Get-ResponseRetryAfter $_.Exception.Response
-            if (-not $retryUntil -or $retryUntil -lt (Get-Date).AddMinutes(5)) {
-                $retryUntil = (Get-Date).AddMinutes(15)
-            }
-            Set-ClaudeBackoffUntil $retryUntil
+            $until = Register-ClaudeFailure -Status 'stale' -Message '' -RetryAfter $retryUntil -MinSeconds 900
             $script:State.Status = 'stale'
-            $script:State.Message = "Rate limited until $($retryUntil.ToString('HH:mm'))"
+            $script:State.Message = "Rate limited until $($until.ToString('HH:mm'))"
         }
-        else                   { $script:State.Status = 'stale'; $script:State.Message = $_.Exception.Message }
+        elseif ($code -eq 401) {
+            [void](Register-ClaudeFailure -Status 'auth' -Message 'Auth expired' -MinSeconds 60)
+            $script:State.Status = 'auth'; $script:State.Message = 'Auth expired'
+        }
+        else {
+            $msg = $_.Exception.Message
+            [void](Register-ClaudeFailure -Status 'stale' -Message $msg -MinSeconds 60)
+            $script:State.Status = 'stale'; $script:State.Message = $msg
+        }
+        # A failed usage call means the token/endpoint is already unhappy; do
+        # not follow it with a second authenticated request to /profile.
+        return
     }
 
-    try {
-        $script:ClaudeIdentity = Get-ClaudeProfile -Token $tok -TimeoutSec $TimeoutSec
-    } catch {
-        Write-Log "Get-Usage: Claude profile fetch failed - $($_.Exception.Message)"
+    # Resolve identity at most once per token. The value is cached to disk so it
+    # survives the fresh process each poll runs in; on a token rotation the cache
+    # misses and we fetch again. A token that has already been tried (success or
+    # failure) is never re-hit, which is what stopped the every-poll /profile
+    # 401s from escalating into a rate limit.
+    $cached = Get-CachedClaudeProfile
+    if ($cached -and $cached.Token -eq $tok) {
+        $script:ClaudeIdentity = $cached.Identity
+    } else {
+        try {
+            $script:ClaudeIdentity = Get-ClaudeProfile -Token $tok -TimeoutSec $TimeoutSec
+        } catch {
+            $script:ClaudeIdentity = $null
+            Write-Log "Get-Usage: Claude profile fetch failed - $($_.Exception.Message)"
+        }
+        Save-ClaudeProfile -Token $tok -Identity $script:ClaudeIdentity
     }
 }
 
