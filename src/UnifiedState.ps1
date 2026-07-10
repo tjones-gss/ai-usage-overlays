@@ -14,7 +14,9 @@ $script:UnifiedCfgDefaults = @{
     ShowAlerts  = $true
     ShowGraph   = $false
     AutoCheckUpdates = $true
+    LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
+    AlertState = @{}
 }
 
 function ConvertTo-UnifiedSectionsMap($value) {
@@ -67,7 +69,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastNotifiedUpdateVersion')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
@@ -76,7 +78,17 @@ function Load-UnifiedState {
         if ($sectionsProp) {
             $script:Cfg['Sections'] = ConvertTo-UnifiedSectionsMap $sectionsProp.Value
         }
+        $alertStateProp = $s.PSObject.Properties['AlertState']
+        if ($alertStateProp) {
+            $script:Cfg['AlertState'] = $alertStateProp.Value
+            if (Get-Command Import-AlertStateFromConfig -ErrorAction SilentlyContinue) {
+                Import-AlertStateFromConfig
+            }
+        }
         Initialize-UnifiedCfg
+        if ($script:UpdateState -and $script:Cfg.LastUpdateCheckAt) {
+            $script:UpdateState.CheckedAt = $script:Cfg.LastUpdateCheckAt
+        }
     } catch {
         try { Write-Log "Load-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }

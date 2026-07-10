@@ -16,6 +16,14 @@ param(
     [switch]$Json,
     [switch]$Snapshot,
     [switch]$NoHud,
+    [ValidateSet('Claude', 'Codex', 'Cursor')]
+    [string[]]$Provider = @('Claude', 'Codex', 'Cursor'),
+    [switch]$ClaudeOnly,
+    [switch]$CodexOnly,
+    [switch]$CursorOnly,
+    [int]$TimeoutSec = 20,
+    [int]$ClaudeTimeoutSec = 0,
+    [int]$CursorTimeoutSec = 0,
     [switch]$Background   # set on self-relaunch to break infinite-loop
 )
 
@@ -116,7 +124,70 @@ function Invoke-SafeSnapshotStep {
     }
 }
 
+function Limit-SnapshotTimeoutSec {
+    param(
+        [int]$Value,
+        [int]$Default = 20
+    )
+
+    if ($Value -le 0) { $Value = $Default }
+    return [math]::Min(120, [math]::Max(1, $Value))
+}
+
+function Resolve-SnapshotProviders {
+    param(
+        [string[]]$Provider,
+        [switch]$ClaudeOnly,
+        [switch]$CodexOnly,
+        [switch]$CursorOnly
+    )
+
+    $selected = [ordered]@{
+        claude = $false
+        codex  = $false
+        cursor = $false
+    }
+
+    if ($ClaudeOnly -or $CodexOnly -or $CursorOnly) {
+        if ($ClaudeOnly) { $selected.claude = $true }
+        if ($CodexOnly)  { $selected.codex  = $true }
+        if ($CursorOnly) { $selected.cursor = $true }
+        return $selected
+    }
+
+    foreach ($name in @($Provider)) {
+        switch -Regex ($name) {
+            '^Claude$' { $selected.claude = $true; break }
+            '^Codex$'  { $selected.codex  = $true; break }
+            '^Cursor$' { $selected.cursor = $true; break }
+        }
+    }
+
+    return $selected
+}
+
+function New-SkippedProviderSnapshot {
+    param([string]$Reason = 'Provider was not selected.')
+
+    [ordered]@{
+        selected = $false
+        status   = 'skipped'
+        message  = $Reason
+        error    = $null
+    }
+}
+
 function Invoke-OverlaySnapshot {
+    param(
+        [string[]]$Provider = @('Claude', 'Codex', 'Cursor'),
+        [switch]$ClaudeOnly,
+        [switch]$CodexOnly,
+        [switch]$CursorOnly,
+        [int]$TimeoutSec = 20,
+        [int]$ClaudeTimeoutSec = 0,
+        [int]$CursorTimeoutSec = 0
+    )
+
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $env:PATH = "$script:AppDir;$env:PATH"
 
@@ -140,18 +211,46 @@ function Invoke-OverlaySnapshot {
     $script:CursorErrMsg = ''
     $script:CursorLastFetch = ''
 
-    Load-History
-    $claudeError = Invoke-SafeSnapshotStep 'Claude usage' { Get-Usage -Force }
-    $claudeStatsError = Invoke-SafeSnapshotStep 'Claude stats' { Get-Stats }
-    $codexError = Invoke-SafeSnapshotStep 'Codex stats' { Get-CodexStats }
-    $cursorUsageError = Invoke-SafeSnapshotStep 'Cursor usage' { Get-CursorUsage }
-    $cursorStatsError = Invoke-SafeSnapshotStep 'Cursor stats' { Get-CursorLocalStats }
+    $selectedProviders = Resolve-SnapshotProviders -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly
+    $defaultTimeout = Limit-SnapshotTimeoutSec -Value $TimeoutSec
+    $claudeTimeout = Limit-SnapshotTimeoutSec -Value $ClaudeTimeoutSec -Default $defaultTimeout
+    $cursorTimeout = Limit-SnapshotTimeoutSec -Value $CursorTimeoutSec -Default $defaultTimeout
 
-    $snapshot = [ordered]@{
-        generatedAt = (Get-Date).ToString('o')
-        appVersion = $script:AppVersion
-        claude = [ordered]@{
-            status = $script:State.Status
+    Load-History
+    $claudeError = $null
+    $claudeStatsError = $null
+    $codexError = $null
+    $cursorUsageError = $null
+    $cursorStatsError = $null
+
+    if ($selectedProviders['claude']) {
+        $claudeError = Invoke-SafeSnapshotStep 'Claude usage' { Get-Usage -TimeoutSec $claudeTimeout -Force }
+        $claudeStatsError = Invoke-SafeSnapshotStep 'Claude stats' { Get-Stats }
+    }
+    if ($selectedProviders['codex']) {
+        $codexError = Invoke-SafeSnapshotStep 'Codex stats' { Get-CodexStats }
+    }
+    if ($selectedProviders['cursor']) {
+        $cursorUsageError = Invoke-SafeSnapshotStep 'Cursor usage' { Get-CursorUsage -TimeoutSec $cursorTimeout }
+        $cursorStatsError = Invoke-SafeSnapshotStep 'Cursor stats' { Get-CursorLocalStats -TimeoutSec $cursorTimeout }
+    }
+
+    $providers = [ordered]@{
+        claude = New-SkippedProviderSnapshot
+        codex  = New-SkippedProviderSnapshot
+        cursor = New-SkippedProviderSnapshot
+    }
+
+    if ($selectedProviders['claude']) {
+        $claudeStatus = $script:State.Status
+        if (($claudeStatus -eq 'error' -and $script:State.Message -eq 'No credentials file') -or
+            ($claudeStatus -eq 'auth' -and $script:State.Message -eq 'Not logged in')) {
+            $claudeStatus = 'unavailable'
+        }
+
+        $providers.claude = [ordered]@{
+            selected = $true
+            status = $claudeStatus
             message = $script:State.Message
             lastFetch = $script:State.LastFetch
             identity = $script:ClaudeIdentity
@@ -160,20 +259,43 @@ function Invoke-OverlaySnapshot {
             error = $claudeError
             statsError = $claudeStatsError
         }
-        codex = [ordered]@{
-            status = if ($script:CodexStats) { 'ok' } elseif ($codexError) { 'error' } else { 'unavailable' }
+    }
+    if ($selectedProviders['codex']) {
+        $codexStatus = if ($script:CodexStats) { 'ok' } elseif ($codexError) { 'error' } else { 'unavailable' }
+        $providers.codex = [ordered]@{
+            selected = $true
+            status = $codexStatus
             stats = $script:CodexStats
             error = $codexError
         }
-        cursor = [ordered]@{
-            status = $script:AuthState
+    }
+    if ($selectedProviders['cursor']) {
+        $cursorError = if ($cursorUsageError) { $cursorUsageError } else { $cursorStatsError }
+        $cursorStatus = if ($script:AuthState -eq 'notoken') { 'unavailable' } else { $script:AuthState }
+        $providers.cursor = [ordered]@{
+            selected = $true
+            status = $cursorStatus
             message = $script:CursorErrMsg
             lastFetch = $script:CursorLastFetch
             usage = $script:LiveData
             summary = $script:SummaryData
             local = $script:LocalData
-            error = if ($cursorUsageError) { $cursorUsageError } else { $cursorStatsError }
+            error = $cursorError
         }
+    }
+
+    $snapshot = [ordered]@{
+        schema = 'ai-usage.snapshot.v1'
+        generatedAt = (Get-Date).ToString('o')
+        appVersion = $script:AppVersion
+        request = [ordered]@{
+            providers = @($selectedProviders.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { $_.Key })
+            timeoutSec = [ordered]@{
+                claude = $claudeTimeout
+                cursor = $cursorTimeout
+            }
+        }
+        providers = $providers
     }
 
     $snapshot | ConvertTo-Json -Depth 12
@@ -189,7 +311,7 @@ if ($Install) {
 }
 
 if ($Json -or $Snapshot -or $NoHud) {
-    Invoke-OverlaySnapshot
+    Invoke-OverlaySnapshot -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly -TimeoutSec $TimeoutSec -ClaudeTimeoutSec $ClaudeTimeoutSec -CursorTimeoutSec $CursorTimeoutSec
     return
 }
 

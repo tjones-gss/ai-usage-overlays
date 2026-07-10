@@ -10,10 +10,150 @@ $script:WarnPct        = 80
 $script:CritPct        = 95
 $script:WorkdayStartHour = 8
 $script:WorkdayEndHour   = 18
-$script:AppVersion     = '0.2.3'
+$script:AppVersion     = '0.2.4'
 $script:RepoOwner      = 'tjones-gss'
 $script:RepoName       = 'ai-usage-overlays'
 $script:UpdateChannel  = 'release'
+
+# WSL can contain the current Codex and Claude state even when the overlay runs
+# in Windows. Discovery is cached because every poll process can ask for it more
+# than once, and no WSL problem may interrupt the poll.
+#
+# We do NOT read WSL data directly via the \\wsl.localhost\<distro> UNC path:
+# that UNC is unreliable from background processes (Test-Path returns False
+# even while the distro is running), so the feature would silently no-op.
+# Instead we shell into wsl.exe and have the distro itself copy (cp -u, so
+# it is a cheap incremental sync) its .claude/.codex state into a local
+# Windows mirror directory under $script:AppDir, then treat that mirror as
+# a home root. wsl.exe interop and WSL-side writes to /mnt/c always work.
+$script:WslHomeRootsCache = $null
+
+function Get-WslHomeRoots {
+    if ($null -ne $script:WslHomeRootsCache) {
+        return @($script:WslHomeRootsCache)
+    }
+
+    if (-not $script:AppDir) {
+        $script:WslHomeRootsCache = @()
+        return @()
+    }
+
+    $mirrorBase = Join-Path $script:AppDir 'wsl-mirror'
+    $marker = Join-Path $mirrorBase '.last-sync'
+    $roots = [System.Collections.Generic.List[string]]::new()
+
+    try {
+        # Stampede guard: multiple background poll jobs can call this
+        # concurrently. Only pay for the WSL sync once per 60 seconds;
+        # everyone else just reads whatever is already in the mirror.
+        $needsSync = $true
+        try {
+            if (Test-Path -LiteralPath $marker -PathType Leaf -ErrorAction SilentlyContinue) {
+                $markerItem = Get-Item -LiteralPath $marker -ErrorAction Stop
+                $ageSeconds = ((Get-Date).ToUniversalTime() - $markerItem.LastWriteTimeUtc).TotalSeconds
+                if ($ageSeconds -lt 60) {
+                    $needsSync = $false
+                }
+            }
+        } catch { }
+
+        if ($needsSync) {
+            $process = $null
+            try {
+                $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+                if ($wsl) {
+                    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+                    $startInfo.FileName = $wsl.Source
+                    $startInfo.Arguments = '--list --quiet'
+                    $startInfo.UseShellExecute = $false
+                    $startInfo.CreateNoWindow = $true
+                    $startInfo.RedirectStandardOutput = $true
+                    $startInfo.RedirectStandardError = $true
+                    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::Unicode
+
+                    $process = [System.Diagnostics.Process]::new()
+                    $process.StartInfo = $startInfo
+                    $distros = @()
+                    if ($process.Start() -and $process.WaitForExit(1500)) {
+                        $distroOutput = $process.StandardOutput.ReadToEnd()
+                        $distros = @($distroOutput -split "`n") | ForEach-Object {
+                            ([string]$_).Replace([string][char]0, '').Trim()
+                        } | Where-Object { $_ -and $_ -notmatch '^docker' }
+                    } else {
+                        if ($process -and -not $process.HasExited) {
+                            try { $process.Kill() } catch { }
+                        }
+                    }
+                    if ($process) { $process.Dispose() }
+                    $process = $null
+
+                    if ($distros.Count -gt 0) {
+                        try { [void](New-Item -ItemType Directory -Force -Path $mirrorBase -ErrorAction Stop) } catch { }
+
+                        $mirrorEscaped = $mirrorBase.Replace("'", "'\''")
+                        $syncScriptTemplate = 'MB=$(wslpath -u ''{0}''); for h in /home/*; do u=$(basename \"$h\"); if [ -d \"$h/.claude\" ] || [ -d \"$h/.codex\" ]; then d=\"$MB/{1}/$u\"; mkdir -p \"$d/.claude\" \"$d/.codex\"; cp -u --preserve=timestamps \"$h/.claude/.credentials.json\" \"$d/.claude/\" 2>/dev/null; cp -u -r --preserve=timestamps \"$h/.claude/projects\" \"$d/.claude/\" 2>/dev/null; cp -u -r --preserve=timestamps \"$h/.codex/sessions\" \"$d/.codex/\" 2>/dev/null; fi; done'
+
+                        foreach ($distro in $distros) {
+                            $syncScript = $syncScriptTemplate -f $mirrorEscaped, $distro
+                            $syncProcess = $null
+                            try {
+                                $syncStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+                                $syncStartInfo.FileName = $wsl.Source
+                                $syncStartInfo.Arguments = '-d ' + $distro + ' -e /bin/sh -c "' + $syncScript + '"'
+                                $syncStartInfo.UseShellExecute = $false
+                                $syncStartInfo.CreateNoWindow = $true
+                                $syncStartInfo.RedirectStandardOutput = $true
+                                $syncStartInfo.RedirectStandardError = $true
+
+                                $syncProcess = [System.Diagnostics.Process]::new()
+                                $syncProcess.StartInfo = $syncStartInfo
+                                if (-not $syncProcess.Start() -or -not $syncProcess.WaitForExit(45000)) {
+                                    if ($syncProcess -and -not $syncProcess.HasExited) {
+                                        try { $syncProcess.Kill() } catch { }
+                                    }
+                                    # Partial mirror is fine; cp -u resumes next poll.
+                                }
+                            } catch {
+                            } finally {
+                                if ($syncProcess) { $syncProcess.Dispose() }
+                            }
+                        }
+
+                        try {
+                            [void](New-Item -ItemType Directory -Force -Path $mirrorBase -ErrorAction Stop)
+                            Set-Content -LiteralPath $marker -Value ((Get-Date).ToUniversalTime().ToString('o')) -ErrorAction Stop
+                        } catch { }
+                    }
+                }
+            } catch {
+            } finally {
+                if ($process) { $process.Dispose() }
+            }
+        }
+
+        # Build the result from whatever is in the mirror, regardless of
+        # whether this call's own sync (if any) succeeded.
+        try {
+            if (Test-Path -LiteralPath $mirrorBase -PathType Container -ErrorAction SilentlyContinue) {
+                foreach ($distroDir in @(Get-ChildItem -LiteralPath $mirrorBase -Directory -ErrorAction SilentlyContinue)) {
+                    foreach ($userDir in @(Get-ChildItem -LiteralPath $distroDir.FullName -Directory -ErrorAction SilentlyContinue)) {
+                        $hasClaude = Test-Path -LiteralPath (Join-Path $userDir.FullName '.claude') -PathType Container -ErrorAction SilentlyContinue
+                        $hasCodex = Test-Path -LiteralPath (Join-Path $userDir.FullName '.codex') -PathType Container -ErrorAction SilentlyContinue
+                        if ($hasClaude -or $hasCodex) {
+                            [void]$roots.Add($userDir.FullName)
+                        }
+                    }
+                }
+            }
+        } catch { }
+
+        $script:WslHomeRootsCache = @($roots | Select-Object -Unique)
+        return @($script:WslHomeRootsCache)
+    } catch {
+        $script:WslHomeRootsCache = @()
+        return @()
+    }
+}
 
 if ($script:AppDir) {
     $script:AppVersionPath = Join-Path $script:AppDir 'app-version.txt'
@@ -127,5 +267,7 @@ $script:Cfg = @{
     ShowAlerts  = $true    # NEW: enable threshold balloon alerts
     ShowGraph   = $false   # NEW: show history sparkline (off by default to keep panel compact)
     AutoCheckUpdates = $true
+    LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
+    AlertState = @{}
 }

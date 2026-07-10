@@ -75,6 +75,8 @@ function Get-CursorToken {
 # Live data from Cursor API
 # ---------------------------------------------------------------------------
 function Get-CursorUsage {
+    param([int]$TimeoutSec = 20)
+
     $tok, $userId, $email = Get-CursorToken
     if (-not $tok -or -not $userId) {
         $script:AuthState = 'notoken'; $script:CursorErrMsg = 'Cannot read Cursor token from state.vscdb'
@@ -85,7 +87,7 @@ function Get-CursorUsage {
 
     try {
         $r = Invoke-RestMethod "https://cursor.com/api/usage?user=$([Uri]::EscapeDataString($userId))" `
-            -Headers @{ Cookie = $cookie } -TimeoutSec 20
+            -Headers @{ Cookie = $cookie } -TimeoutSec $TimeoutSec
         $script:LiveData        = $r
         $script:AuthState       = 'ok'
         $script:CursorErrMsg    = ''
@@ -100,7 +102,7 @@ function Get-CursorUsage {
     # Also fetch usage-summary for on-demand spend
     try {
         $script:SummaryData = Invoke-RestMethod 'https://cursor.com/api/usage-summary' `
-            -Headers @{ Cookie = $cookie; Authorization = "Bearer $tok" } -TimeoutSec 20
+            -Headers @{ Cookie = $cookie; Authorization = "Bearer $tok" } -TimeoutSec $TimeoutSec
     } catch { }
 }
 
@@ -112,13 +114,15 @@ function Get-CursorUsage {
 # (No web or live-local source exposes a conversation/session count anymore.)
 # ---------------------------------------------------------------------------
 function Get-CursorLocalStats {
+    param([int]$TimeoutSec = 20)
+
     $tok, $userId, $email = Get-CursorToken
     if (-not $tok -or -not $userId) { return }
     $cookie = "WorkosCursorSessionToken=$([Uri]::EscapeDataString($userId + '::' + $tok))"
 
     try {
         $a = Invoke-RestMethod 'https://cursor.com/api/dashboard/get-user-analytics' `
-            -Headers @{ Cookie = $cookie } -TimeoutSec 20
+            -Headers @{ Cookie = $cookie } -TimeoutSec $TimeoutSec
     } catch { return }
     if (-not $a -or -not $a.dailyMetrics) { return }
 
