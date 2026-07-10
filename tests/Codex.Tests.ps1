@@ -62,6 +62,22 @@ BeforeAll {
         }
     }
 
+    function New-CodexUserMessage {
+        param(
+            [string]$Timestamp,
+            [string]$Message = 'test message'
+        )
+
+        return @{
+            timestamp = $Timestamp
+            type      = 'event_msg'
+            payload   = @{
+                type    = 'user_message'
+                message = $Message
+            }
+        }
+    }
+
     function New-TestTimestamp {
         param([datetime]$LocalTime)
 
@@ -160,20 +176,28 @@ Describe 'Get-CodexStats' {
         }
     }
 
-    It 'parses real event_msg token counts using the last cumulative event in each session file' {
+    It 'parses real event_msg user messages and the last cumulative token event in each session file' {
         $baseTime = (Get-Date).Date.AddHours(10)
         $tsMeta = New-TestTimestamp $baseTime
-        $tsModel1 = New-TestTimestamp ($baseTime.AddMinutes(1))
-        $tsToken1 = New-TestTimestamp ($baseTime.AddMinutes(2))
-        $tsModel2 = New-TestTimestamp ($baseTime.AddMinutes(3))
-        $tsToken2 = New-TestTimestamp ($baseTime.AddMinutes(4))
+        $tsModel = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $tsUser1 = New-TestTimestamp ($baseTime.AddMinutes(2))
+        $tsUser2 = New-TestTimestamp ($baseTime.AddMinutes(3))
+        $tsUser3 = New-TestTimestamp ($baseTime.AddMinutes(4))
+        $tsToken1 = New-TestTimestamp ($baseTime.AddMinutes(5))
+        $tsToken2 = New-TestTimestamp ($baseTime.AddMinutes(6))
+        $rateLimits = @{
+            primary = @{ used_percent = 48; resets_at = 1783651392 }
+            secondary = @{ used_percent = 8; resets_at = 1784238192 }
+        }
 
         Write-CodexFixture '2026\06\10\rollout-test.jsonl' @(
             @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='s1'; timestamp=$tsMeta } }
-            @{ timestamp=$tsModel1; type='turn_context'; payload=@{ model='other-model' } }
+            @{ timestamp=$tsModel; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexUserMessage $tsUser1 'first')
+            (New-CodexUserMessage $tsUser2 'second')
+            (New-CodexUserMessage $tsUser3 'third')
             (New-CodexTokenEvent $tsToken1 100 10 20)
-            @{ timestamp=$tsModel2; type='turn_context'; payload=@{ model='gpt-5.5' } }
-            (New-CodexTokenEvent $tsToken2 300 50 70)
+            (New-CodexTokenEvent $tsToken2 300 50 70 $rateLimits)
         ) | Out-Null
 
         Get-CodexStats
@@ -181,11 +205,47 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.InTokens  | Should -Be 300
         $script:CodexStats.OutTokens | Should -Be 70
         $script:CodexStats.ValueUSD  | Should -Be 0.003375
-        $script:CodexStats.Messages  | Should -Be 2
+        $script:CodexStats.Messages  | Should -Be 3
         $script:CodexStats.Sessions  | Should -Be 1
-        $script:CodexStats.TodayMsg  | Should -Be 2
+        $script:CodexStats.TodayMsg  | Should -Be 3
         $script:CodexStats.TodayTok  | Should -Be 370
         $script:CodexStats.ValueUSD  | Should -BeGreaterThan 0
+    }
+
+    It 'preserves user message dates when the session file is loaded from cache' {
+        $baseTime = (Get-Date).Date.AddHours(12)
+        $tsMeta = New-TestTimestamp $baseTime
+        $tsModel = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $tsUser1 = New-TestTimestamp ($baseTime.AddMinutes(2))
+        $tsUser2 = New-TestTimestamp ($baseTime.AddMinutes(3))
+        $tsUser3 = New-TestTimestamp ($baseTime.AddMinutes(4))
+        $tsToken = New-TestTimestamp ($baseTime.AddMinutes(5))
+        $rateLimits = @{
+            primary = @{ used_percent = 48; resets_at = 1783651392 }
+            secondary = @{ used_percent = 8; resets_at = 1784238192 }
+        }
+
+        Write-CodexFixture '2026\06\10\cache-message-test.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='cache-messages'; timestamp=$tsMeta } }
+            @{ timestamp=$tsModel; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexUserMessage $tsUser1 'first')
+            (New-CodexUserMessage $tsUser2 'second')
+            (New-CodexUserMessage $tsUser3 'third')
+            (New-CodexTokenEvent $tsToken 300 50 70 $rateLimits)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.Messages | Should -Be 3
+        $script:CodexStats.TodayMsg | Should -Be 3
+
+        $script:CodexStatsFileCache = @{}
+        $script:CodexStats = $null
+
+        Get-CodexStats
+
+        $script:CodexStats.Messages | Should -Be 3
+        $script:CodexStats.TodayMsg | Should -Be 3
     }
 
     It 'parses rate limits from the real event_msg payload shape' {
@@ -238,14 +298,16 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.Sessions  | Should -Be 1
     }
 
-    It 'counts sessions that have turns but no token usage yet' {
+    It 'counts sessions that have a user message but no token usage yet' {
         $baseTime = (Get-Date).Date.AddHours(9)
         $tsMeta = New-TestTimestamp $baseTime
         $tsTurn = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $tsUser = New-TestTimestamp ($baseTime.AddMinutes(2))
 
         Write-CodexFixture '2026\06\10\no-usage-test.jsonl' @(
             @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='no-usage'; timestamp=$tsMeta } }
             @{ timestamp=$tsTurn; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexUserMessage $tsUser)
         ) | Out-Null
 
         Get-CodexStats

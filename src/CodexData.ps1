@@ -76,13 +76,22 @@ function Convert-CodexCacheRecords {
         $date = Convert-CodexCacheDate $r.Date
         if (-not $date) { continue }
 
+        $msgDates = @()
+        if ($r.MessageDates) {
+            foreach ($d in @($r.MessageDates)) {
+                $cd = Convert-CodexCacheDate $d
+                if ($cd) { $msgDates += $cd }
+            }
+        }
+
         $converted.Add(@{
-            Model     = [string]$r.Model
-            Date      = $date
-            In        = [long]$r.In
-            CachedIn  = [long]$r.CachedIn
-            Out       = [long]$r.Out
-            SessionId = [string]$r.SessionId
+            Model        = [string]$r.Model
+            Date         = $date
+            In           = [long]$r.In
+            CachedIn     = [long]$r.CachedIn
+            Out          = [long]$r.Out
+            SessionId    = [string]$r.SessionId
+            MessageDates = $msgDates
         })
     }
 
@@ -366,10 +375,6 @@ function Get-CodexStats {
                 if ($o.payload.model) {
                     $lastModel = [string]$o.payload.model
                 }
-                $turnDate = Convert-CodexTimestamp $o.timestamp
-                if ($turnDate) {
-                    [void]$messageDates.Add($turnDate)
-                }
             } elseif (($o.type -eq 'token_count') -or
                       (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'token_count'))) {
                 $usage = $o.payload.info.total_token_usage
@@ -385,6 +390,9 @@ function Get-CodexStats {
                         $lastTokenDate = $tokenDate
                     }
                 }
+            } elseif (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'user_message')) {
+                $msgDate = Convert-CodexTimestamp $o.timestamp
+                if ($msgDate) { [void]$messageDates.Add($msgDate) }
             }
         }
 
