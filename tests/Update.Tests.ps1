@@ -4,6 +4,7 @@ BeforeAll {
     $script:AppDir = $root
     . (Join-Path $root 'src\Config.ps1')
     . (Join-Path $root 'src\Update.ps1')
+    . (Join-Path $root 'src\UnifiedState.ps1')
 }
 
 Describe 'Update version comparison' {
@@ -86,6 +87,14 @@ Describe 'Test-AppUpdateAvailable' {
 }
 
 Describe 'Automatic update check gating' {
+    BeforeEach {
+        $script:Cfg = @{}
+        Initialize-UnifiedCfg
+        $script:StatePath = Join-Path $TestDrive 'unified-overlay-state.json'
+        $script:window = $null
+        $script:UpdateState.CheckedAt = $null
+    }
+
     It 'is not due when automatic checks are disabled' {
         Test-AppUpdateAutoCheckDue -Enabled:$false -LastCheckedAt $null | Should -BeFalse
     }
@@ -99,6 +108,23 @@ Describe 'Automatic update check gating' {
 
         Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $now.AddHours(-23) -Now $now -IntervalHours 24 | Should -BeFalse
         Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $now.AddHours(-24) -Now $now -IntervalHours 24 | Should -BeTrue
+    }
+
+    It 'persists the completed update check timestamp across unified state reloads' {
+        $checkedAt = [datetime]'2026-07-06T12:00:00'
+        $now = $checkedAt.AddHours(23)
+
+        $script:Cfg.LastUpdateCheckAt = $checkedAt
+        Save-UnifiedState
+
+        $script:Cfg = @{}
+        Initialize-UnifiedCfg
+        $script:UpdateState.CheckedAt = $null
+
+        Load-UnifiedState
+
+        $script:UpdateState.CheckedAt | Should -Not -BeNullOrEmpty
+        Test-AppUpdateAutoCheckDue -Enabled:$true -LastCheckedAt $script:UpdateState.CheckedAt -Now $now -IntervalHours 24 | Should -BeFalse
     }
 }
 
