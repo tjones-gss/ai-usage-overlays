@@ -230,6 +230,13 @@ $xaml = @'
                        ToolTip="Today's tokens and messages (refreshed by Claude Code periodically)"/>
             <TextBlock Grid.Column="1" x:Name="todayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
           </Grid>
+          <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="AFTER HRS" Foreground="#7BA8C8"
+                       FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"
+                       ToolTip="Today's usage outside configured work hours"/>
+            <TextBlock Grid.Column="1" x:Name="afterHoursText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+          </Grid>
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="LIFETIME" Foreground="#7BA8C8"
@@ -415,6 +422,8 @@ function Update-UI {
         $script:window.FindName('valText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
         $script:window.FindName('tokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
         $script:window.FindName('todayText').Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayTok), $s.TodayMsg)
+        $afterHoursText = $script:window.FindName('afterHoursText')
+        if ($afterHoursText) { $afterHoursText.Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayAfterHoursTok), $s.TodayAfterHoursMsg) }
         $script:window.FindName('lifeText').Text  = ('{0} sessions  {1} msgs' -f $s.Sessions, (Fmt-Tok $s.Messages))
         $script:window.FindName('statsPanel').ToolTip = ('Cache last updated: {0}  |  Prices as of {1}' -f $s.LastComputed, $script:PricesAsOf)
     }
