@@ -31,6 +31,33 @@ Describe 'ConvertTo-ClaudeIdentity' {
     }
 }
 
+Describe 'Get-ClaudeDataRoots' {
+    It 'prefers the Windows Claude home and discovers WSL user homes' {
+        $windowsHome = Join-Path $TestDrive 'WindowsUser'
+        $wslRoot = Join-Path $TestDrive 'wsl.localhost'
+        $windowsClaude = Join-Path $windowsHome '.claude'
+        $wslClaude = Join-Path $wslRoot 'Ubuntu\home\dev\.claude'
+        New-Item -ItemType Directory -Path $windowsClaude, $wslClaude -Force | Out-Null
+
+        $roots = @(Get-ClaudeDataRoots -WindowsHome $windowsHome -WslHostRoot $wslRoot -WslDistros 'Ubuntu')
+
+        $roots | Should -Be @($windowsClaude, $wslClaude)
+    }
+
+    It 'uses a WSL credentials file when no explicit Windows credentials file exists' {
+        $script:CredPath = Join-Path $TestDrive 'missing\.credentials.json'
+        $wslClaude = Join-Path $TestDrive 'Ubuntu\home\dev\.claude'
+        New-Item -ItemType Directory -Path $wslClaude -Force | Out-Null
+        Set-Content -Path (Join-Path $wslClaude '.credentials.json') -Value '{"claudeAiOauth":{"accessToken":"wsl-token"}}'
+
+        Mock Get-ClaudeDataRoots { @($wslClaude) }
+        Resolve-ClaudeDataPaths
+
+        $script:CredPath | Should -Be (Join-Path $wslClaude '.credentials.json')
+        $script:ClaudeProjectDirs | Should -Be @()
+    }
+}
+
 Describe 'Get-Usage Claude profile behavior' {
     BeforeEach {
         # Isolate every persisted file (creds, backoff, profile cache) per test.
