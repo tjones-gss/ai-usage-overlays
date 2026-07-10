@@ -47,7 +47,7 @@ This downloads the repo zip, installs the same script app under `%LOCALAPPDATA%\
 
 - Windows 10/11
 - Windows PowerShell 5.1 or PowerShell 7+
-- Claude Code CLI signed in (`claude auth login`)
+- Claude Code CLI signed in (`claude auth login`). Windows and standard WSL installs are supported; WSL credentials and transcripts are discovered under `\\wsl.localhost\\<distro>\\home\\<user>\\.claude`.
 - Codex installed if you want Codex stats; sessions are read from `~\.codex\sessions`
 - Cursor IDE signed in if you want Cursor usage and analytics
 
@@ -100,8 +100,8 @@ The fallback/manual install can still be removed by running `Uninstall.bat` from
 
 The overlay is a PowerShell/WPF app that reads existing local credentials and usage artifacts:
 
-- Claude live quota comes from Anthropic's OAuth usage endpoint using the Claude Code token stored under `~\.claude`.
-- Claude local stats are computed from JSONL transcripts under `~\.claude\projects`.
+- Claude live quota comes from Anthropic's OAuth usage endpoint using the Claude Code token stored under `~\.claude` (Windows or WSL).
+- Claude local stats are computed from JSONL transcripts under `~\.claude\projects` (Windows and WSL sources are combined).
 - Codex stats are computed from JSONL sessions under `~\.codex\sessions`.
 - Cursor usage is read from Cursor's local auth database and Cursor dashboard APIs.
 - Cursor SQLite reads use the bundled `sqlite3.exe`.

@@ -8,6 +8,68 @@ function Write-Log {
     } catch { }  # never throw from a logger
 }
 
+# The HUD runs on Windows, but Claude Code may be used exclusively inside WSL.
+# Windows remains the preferred source; standard WSL homes are a fallback.
+function Get-ClaudeDataRoots {
+    param(
+        [string]$WindowsHome = $env:USERPROFILE,
+        [string]$WslHostRoot = '\\wsl.localhost',
+        [string[]]$WslDistros
+    )
+
+    $roots = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $addRoot = {
+        param([string]$Path)
+        if ($Path -and $seen.Add($Path)) { $roots.Add($Path) }
+    }
+
+    if ($WindowsHome) { & $addRoot (Join-Path $WindowsHome '.claude') }
+
+    try {
+        # The WSL share itself does not enumerate distro names consistently.
+        # Registered distributions are exposed under the current user's Lxss key.
+        if (-not $WslDistros) {
+            $WslDistros = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction Stop |
+                ForEach-Object { (Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop).DistributionName } |
+                Where-Object { $_ })
+        }
+
+        foreach ($distro in $WslDistros) {
+            $homeRoot = Join-Path (Join-Path $WslHostRoot $distro) 'home'
+            if (-not (Test-Path -LiteralPath $homeRoot)) { continue }
+            foreach ($userHome in @(Get-ChildItem -LiteralPath $homeRoot -Directory -ErrorAction Stop)) {
+                $claudeHome = Join-Path $userHome.FullName '.claude'
+                if (Test-Path -LiteralPath $claudeHome) { & $addRoot $claudeHome }
+            }
+        }
+    } catch {
+        Write-Log "Get-ClaudeDataRoots: WSL discovery failed - $($_.Exception.Message)"
+    }
+
+    return $roots.ToArray()
+}
+
+function Resolve-ClaudeDataPaths {
+    $roots = @(Get-ClaudeDataRoots)
+    $script:ClaudeProjectDirs = @($roots | ForEach-Object { Join-Path $_ 'projects' } | Where-Object { Test-Path -LiteralPath $_ })
+
+    $credentialPaths = [System.Collections.Generic.List[string]]::new()
+    if ($script:CredPath -and (Test-Path -LiteralPath $script:CredPath)) {
+        $credentialPaths.Add($script:CredPath)
+    }
+
+    foreach ($root in $roots) {
+        $candidate = Join-Path $root '.credentials.json'
+        if ((Test-Path -LiteralPath $candidate) -and -not $credentialPaths.Contains($candidate)) {
+            $credentialPaths.Add($candidate)
+        }
+    }
+
+    $script:ClaudeCredentialPaths = $credentialPaths.ToArray()
+    if ($credentialPaths.Count -gt 0) { $script:CredPath = $credentialPaths[0] }
+}
+
 # ---------------------------------------------------------------------------
 # Claude quota window normalization
 #
@@ -364,14 +426,38 @@ function Get-Usage {
         }
     }
 
+    Resolve-ClaudeDataPaths
     $tok = $null
-    try { $tok = (Get-Content $script:CredPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch {
+    $credentialPaths = @($script:ClaudeCredentialPaths)
+    if ($credentialPaths.Count -eq 0 -and $script:CredPath) { $credentialPaths = @($script:CredPath) }
+    if ($credentialPaths.Count -eq 0) {
         $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
     }
-    if (-not $tok) { $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return }
+
+    $resp = $null
+    $lastAuthException = $null
     try {
-        $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
-            Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+        foreach ($credentialPath in $credentialPaths) {
+            try { $candidateToken = (Get-Content $credentialPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch { continue }
+            if (-not $candidateToken) { continue }
+
+            try {
+                $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
+                    Authorization = "Bearer $candidateToken"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+                }
+                $tok = $candidateToken
+                $script:CredPath = $credentialPath
+                break
+            } catch {
+                $code = $null
+                if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+                if ($code -eq 401) { $lastAuthException = $_.Exception; continue }
+                throw
+            }
+        }
+        if (-not $resp) {
+            if ($lastAuthException) { throw $lastAuthException }
+            $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
         }
         $resp = Normalize-ClaudeQuotaWindows $resp
         $script:State.Data = $resp; $script:State.Status = 'ok'
@@ -559,14 +645,15 @@ function Get-Stats {
     $cachePath = Join-Path $script:AppDir 'stats-cache.json'
     Import-StatsFileCache $cachePath
 
-    $projDir = Join-Path $env:USERPROFILE '.claude\projects'
-    if (-not (Test-Path $projDir)) {
-        Write-Log 'Get-Stats: ~/.claude/projects not found - no transcript data'
+    Resolve-ClaudeDataPaths
+    $projDirs = @($script:ClaudeProjectDirs)
+    if ($projDirs.Count -eq 0) {
+        Write-Log 'Get-Stats: no Windows or WSL ~/.claude/projects directory found'
         return
     }
 
     try {
-        $files = Get-ChildItem $projDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
+        $files = @($projDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter '*.jsonl' -File -ErrorAction Stop })
     } catch {
         Write-Log "Get-Stats: failed to enumerate transcripts - $($_.Exception.Message)"
         return
