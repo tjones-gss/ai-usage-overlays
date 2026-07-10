@@ -300,6 +300,7 @@ function Copy-Stats {
     if ($s) {
         $lines += "Claude est. API value: ~$(Fmt-Money $s.ValueUSD) all-time"
         $lines += "Claude tokens: $(Fmt-Tok $s.InTokens) in / $(Fmt-Tok $s.OutTokens) out"
+        $lines += "Claude today after-hours: $(Fmt-Tok $s.TodayAfterHoursTok) tokens / $($s.TodayAfterHoursMsg) msgs"
         $lines += "Claude lifetime: $($s.Sessions) sessions / $(Fmt-Tok $s.Messages) msgs"
     }
 
@@ -307,6 +308,7 @@ function Copy-Stats {
         $cs = $script:CodexStats
         $lines += "Codex est. API value: ~$(Fmt-Money $cs.ValueUSD) all-time"
         $lines += "Codex tokens: $(Fmt-Tok $cs.InTokens) in / $(Fmt-Tok $cs.OutTokens) out"
+        $lines += "Codex today after-hours: $(Fmt-Tok $cs.TodayAfterHoursTok) tokens / $($cs.TodayAfterHoursMsg) msgs"
         $lines += "Codex lifetime: $($cs.Sessions) sessions / $(Fmt-Tok $cs.Messages) msgs"
     }
 

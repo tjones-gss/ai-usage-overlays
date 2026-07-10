@@ -122,7 +122,7 @@ function Import-CodexStatsFileCache {
 
         foreach ($prop in $json.PSObject.Properties) {
             $entry = $prop.Value
-            if (-not $entry -or -not $entry.Stamp) { continue }
+            if (-not $entry -or -not $entry.Stamp -or $entry.CacheVersion -ne 2) { continue }
 
             $loaded[$prop.Name] = @{
                 Stamp         = [string]$entry.Stamp
@@ -186,6 +186,13 @@ function Convert-CodexEpochSeconds {
     }
 }
 
+function Test-CodexUsageAfterHours([datetime]$Date) {
+    $startHour = if ($null -ne $script:WorkdayStartHour) { [int]$script:WorkdayStartHour } else { 8 }
+    $endHour = if ($null -ne $script:WorkdayEndHour) { [int]$script:WorkdayEndHour } else { 18 }
+    if ($Date.DayOfWeek -in @([System.DayOfWeek]::Saturday, [System.DayOfWeek]::Sunday)) { return $true }
+    return ($Date.Hour -lt $startHour -or $Date.Hour -ge $endHour)
+}
+
 function Estimate-CodexCost([string]$model, $v) {
     if (-not $script:CodexPrices) { throw 'Estimate-CodexCost: $script:CodexPrices not loaded - dot-source Config.ps1 first.' }
 
@@ -222,7 +229,7 @@ function Estimate-CodexCost([string]$model, $v) {
 function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = $null) {
     $val = 0.0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
-    $msgCount = 0; $tMsg = 0; $tTok = 0L
+    $msgCount = 0; $tMsg = 0; $tTok = 0L; $afterHoursMsg = 0; $afterHoursTok = 0L
     $fiveHourPct = $null
     $fiveHourResetsAt = $null
     $weekPct = $null
@@ -249,11 +256,13 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         foreach ($messageDate in $messageDates) {
             if ($messageDate.Date -eq $today.Date) {
                 $tMsg++
+                if (Test-CodexUsageAfterHours $messageDate) { $afterHoursMsg++ }
             }
         }
 
         if ($r.Date.Date -eq $today.Date) {
             $tTok += [long]$r.In + [long]$r.Out
+            if (Test-CodexUsageAfterHours $r.Date) { $afterHoursTok += [long]$r.In + [long]$r.Out }
         }
 
         # Current model = the model of the most recent session that named one
@@ -294,6 +303,8 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         Messages         = $msgCount
         TodayMsg         = $tMsg
         TodayTok         = $tTok
+        TodayAfterHoursMsg = $afterHoursMsg
+        TodayAfterHoursTok = $afterHoursTok
         FiveHourPct      = $fiveHourPct
         FiveHourResetsAt = $fiveHourResetsAt
         WeekPct          = $weekPct
@@ -468,6 +479,7 @@ function Get-CodexStats {
         }
 
         $activeCache[$file.FullName] = @{
+            CacheVersion  = 2
             Stamp         = $stamp
             Records       = $fileRecords
             LastTokenDate = $fileTokenDate

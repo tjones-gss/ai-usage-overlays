@@ -514,6 +514,7 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
     $val = 0.0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
     $tMsg = 0; $tTok = 0L
+    $afterHoursMsg = 0; $afterHoursTok = 0L
 
     foreach ($r in $records) {
         $v = @{
@@ -530,6 +531,10 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
         if ($r.Date.Date -eq $today.Date) {
             $tMsg++
             $tTok += [long]$r.In + [long]$r.Out
+            if (Test-UsageAfterHours $r.Date) {
+                $afterHoursMsg++
+                $afterHoursTok += [long]$r.In + [long]$r.Out
+            }
         }
     }
 
@@ -541,8 +546,22 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
         Messages     = $records.Count
         TodayMsg     = $tMsg
         TodayTok     = $tTok
+        TodayAfterHoursMsg = $afterHoursMsg
+        TodayAfterHoursTok = $afterHoursTok
         LastComputed = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
+}
+
+function Test-UsageAfterHours([datetime]$Date) {
+    $startHour = if ($null -ne $script:WorkdayStartHour) { [int]$script:WorkdayStartHour } else { 8 }
+    $endHour = if ($null -ne $script:WorkdayEndHour) { [int]$script:WorkdayEndHour } else { 18 }
+
+    if ($Date.DayOfWeek -eq [System.DayOfWeek]::Saturday -or
+        $Date.DayOfWeek -eq [System.DayOfWeek]::Sunday) {
+        return $true
+    }
+
+    return ($Date.Hour -lt $startHour -or $Date.Hour -ge $endHour)
 }
 
 # Per-file parse cache: path -> @{ Stamp; Records }
