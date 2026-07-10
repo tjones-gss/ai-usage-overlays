@@ -10,6 +10,43 @@ Describe 'Unified overlay CLI snapshot mode' {
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$Json'
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$Snapshot'
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$NoHud'
+        $script:UnifiedOverlaySource | Should -Match '\[string\[\]\]\$Provider'
+        $script:UnifiedOverlaySource | Should -Match '\[switch\]\$ClaudeOnly'
+        $script:UnifiedOverlaySource | Should -Match '\[switch\]\$CodexOnly'
+        $script:UnifiedOverlaySource | Should -Match '\[switch\]\$CursorOnly'
+        $script:UnifiedOverlaySource | Should -Match '\[int\]\$TimeoutSec'
+        $script:UnifiedOverlaySource | Should -Match '\[int\]\$ClaudeTimeoutSec'
+        $script:UnifiedOverlaySource | Should -Match '\[int\]\$CursorTimeoutSec'
+    }
+
+    It 'declares the versioned JSON schema and normalized provider envelope' {
+        $script:UnifiedOverlaySource | Should -Match "schema = 'ai-usage\.snapshot\.v1'"
+        $script:UnifiedOverlaySource | Should -Match 'providers = \$providers'
+        $script:UnifiedOverlaySource | Should -Match 'claude = New-SkippedProviderSnapshot'
+        $script:UnifiedOverlaySource | Should -Match 'codex\s+= New-SkippedProviderSnapshot'
+        $script:UnifiedOverlaySource | Should -Match 'cursor = New-SkippedProviderSnapshot'
+    }
+
+    It 'filters providers before invoking provider data fetchers' {
+        $resolveIndex = $script:UnifiedOverlaySource.IndexOf('$selectedProviders = Resolve-SnapshotProviders')
+        $claudeFetchIndex = $script:UnifiedOverlaySource.IndexOf("Get-Usage -TimeoutSec `$claudeTimeout")
+        $codexFetchIndex = $script:UnifiedOverlaySource.IndexOf('Get-CodexStats')
+        $cursorFetchIndex = $script:UnifiedOverlaySource.IndexOf("Get-CursorUsage -TimeoutSec `$cursorTimeout")
+
+        $resolveIndex | Should -BeGreaterThan -1
+        $claudeFetchIndex | Should -BeGreaterThan -1
+        $codexFetchIndex | Should -BeGreaterThan -1
+        $cursorFetchIndex | Should -BeGreaterThan -1
+        $resolveIndex | Should -BeLessThan $claudeFetchIndex
+        $resolveIndex | Should -BeLessThan $codexFetchIndex
+        $resolveIndex | Should -BeLessThan $cursorFetchIndex
+    }
+
+    It 'bounds network provider timeouts and passes them to Claude and Cursor' {
+        $script:UnifiedOverlaySource | Should -Match 'Limit-SnapshotTimeoutSec'
+        $script:UnifiedOverlaySource | Should -Match 'Get-Usage -TimeoutSec \$claudeTimeout'
+        $script:UnifiedOverlaySource | Should -Match 'Get-CursorUsage -TimeoutSec \$cursorTimeout'
+        $script:UnifiedOverlaySource | Should -Match 'Get-CursorLocalStats -TimeoutSec \$cursorTimeout'
     }
 
     It 'exits through snapshot output before WPF startup' {
