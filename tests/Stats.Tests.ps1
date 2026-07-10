@@ -82,3 +82,13 @@ Describe 'Measure-Stats' {
         $s.ValueUSD  | Should -Be 18.75   # opus cacheWrite: $18.75/M
     }
 }
+
+Describe 'Get-ClaudeProjectsDirCandidates' {
+    It 'includes projects directories from supplied WSL home roots' {
+        $wslHome = '\\wsl.localhost\Ubuntu\home\alice'
+
+        $dirs = Get-ClaudeProjectsDirCandidates -WslHomeRoots @($wslHome)
+
+        $dirs | Should -Contain '\\wsl.localhost\Ubuntu\home\alice\.claude\projects'
+    }
+}

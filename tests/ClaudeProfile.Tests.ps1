@@ -5,6 +5,7 @@ BeforeAll {
     $script:ErrLog = Join-Path $TestDrive 'overlay-test-errors.log'
     $script:CredPath = Join-Path $TestDrive '.credentials.json'
     . (Join-Path $root 'src\Config.ps1')
+    function Get-WslHomeRoots { return @() }
     . (Join-Path $root 'src\Data.ps1')
 }
 
@@ -28,6 +29,42 @@ Describe 'ConvertTo-ClaudeIdentity' {
 
     It 'returns null when the profile has no usable identity fields' {
         ConvertTo-ClaudeIdentity ([pscustomobject]@{}) | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Select-ClaudeCredential' {
+    It 'prefers an unexpired credential over an expired credential' {
+        $expiredPath = Join-Path $TestDrive 'expired-credentials.json'
+        $validPath = Join-Path $TestDrive 'valid-credentials.json'
+        $expiredAt = [System.DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
+        $validAt = [System.DateTimeOffset]::UtcNow.AddMinutes(30).ToUnixTimeMilliseconds()
+
+        @{ claudeAiOauth = @{ accessToken = 'expired-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $expiredPath -Encoding UTF8
+        @{ claudeAiOauth = @{ accessToken = 'valid-token'; expiresAt = $validAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $validPath -Encoding UTF8
+
+        Select-ClaudeCredential @($expiredPath, $validPath) | Should -Be 'valid-token'
+    }
+
+    It 'uses the newest credential file when every token is expired' {
+        $olderPath = Join-Path $TestDrive 'older-expired-credentials.json'
+        $newerPath = Join-Path $TestDrive 'newer-expired-credentials.json'
+        $expiredAt = [System.DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
+
+        @{ claudeAiOauth = @{ accessToken = 'older-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $olderPath -Encoding UTF8
+        @{ claudeAiOauth = @{ accessToken = 'newer-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $newerPath -Encoding UTF8
+
+        (Get-Item $olderPath).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-2)
+        (Get-Item $newerPath).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-1)
+
+        Select-ClaudeCredential @($olderPath, $newerPath) | Should -Be 'newer-token'
     }
 }
 
