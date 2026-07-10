@@ -333,6 +333,8 @@ function Complete-AppUpdateCheckJobs {
         }
 
         Set-AppUpdateState $info
+        $script:Cfg.LastUpdateCheckAt = $script:UpdateState.CheckedAt
+        Save-UnifiedState
         Sync-UpdateMenuItems
 
         if ($automatic) {
@@ -352,6 +354,8 @@ function Complete-AppUpdateCheckJobs {
     } catch {
         $info = New-AppUpdateInfo -Status 'error' -Message "Update check failed: $($_.Exception.Message)" -CurrentVersion $script:AppVersion
         Set-AppUpdateState $info
+        $script:Cfg.LastUpdateCheckAt = $script:UpdateState.CheckedAt
+        Save-UnifiedState
         Sync-UpdateMenuItems
         if ($automatic) {
             try { Write-Log $info.Message } catch { }
@@ -427,6 +431,64 @@ foreach ($alertKey in $script:AlertKeys) {
     $script:Notified[$alertKey] = @{ Level = 0; Reset = $null }
 }
 
+function ConvertTo-AlertStateMap($value) {
+    $map = @{}
+    foreach ($alertKey in $script:AlertKeys) {
+        $map[$alertKey] = @{ Level = 0; Reset = $null }
+    }
+
+    if ($null -eq $value) { return $map }
+
+    foreach ($alertKey in $script:AlertKeys) {
+        $entry = $null
+        if ($value -is [System.Collections.IDictionary]) {
+            if (-not $value.Contains($alertKey)) { continue }
+            $entry = $value[$alertKey]
+        } else {
+            $prop = $value.PSObject.Properties[$alertKey]
+            if (-not $prop) { continue }
+            $entry = $prop.Value
+        }
+
+        if ($null -eq $entry) { continue }
+
+        if ($entry -is [System.Collections.IDictionary]) {
+            $map[$alertKey] = @{
+                Level = if ($entry.Contains('Level') -and $null -ne $entry['Level']) { [int]$entry['Level'] } else { 0 }
+                Reset = if ($entry.Contains('Reset')) { $entry['Reset'] } else { $null }
+            }
+            continue
+        }
+
+        $levelProp = $entry.PSObject.Properties['Level']
+        $resetProp = $entry.PSObject.Properties['Reset']
+        if ($levelProp -or $resetProp) {
+            $map[$alertKey] = @{
+                Level = if ($levelProp -and $null -ne $levelProp.Value) { [int]$levelProp.Value } else { 0 }
+                Reset = if ($resetProp) { $resetProp.Value } else { $null }
+            }
+            continue
+        }
+
+        $map[$alertKey] = @{ Level = [int]$entry; Reset = $null }
+    }
+
+    return $map
+}
+
+function Export-AlertStateToConfig {
+    if (-not $script:Cfg) { return }
+    $script:Cfg['AlertState'] = ConvertTo-AlertStateMap $script:Notified
+}
+
+function Import-AlertStateFromConfig {
+    if (-not $script:Cfg) { return }
+    $script:Notified = ConvertTo-AlertStateMap $script:Cfg.AlertState
+    Export-AlertStateToConfig
+}
+
+Import-AlertStateFromConfig
+
 function Get-AlertLabel([string]$key) {
     switch ($key) {
         'five_hour'        { '5-hour session' }
@@ -472,8 +534,14 @@ function Get-AlertState([string]$key, $resetWindow = $null) {
 
 function Set-AlertState([string]$key, [int]$level, $resetWindow = $null) {
     $state = Get-AlertState $key $resetWindow
+    $oldLevel = [int]$state['Level']
+    $oldReset = $state['Reset']
     $state['Level'] = $level
     $state['Reset'] = $resetWindow
+    Export-AlertStateToConfig
+    if (($oldLevel -ne $level -or $oldReset -ne $resetWindow) -and (Get-Command Save-UnifiedState -ErrorAction SilentlyContinue)) {
+        Save-UnifiedState
+    }
 }
 
 function Get-AlertLevel($util) {

@@ -125,5 +125,7 @@ $script:Cfg = @{
     ShowAlerts  = $true    # NEW: enable threshold balloon alerts
     ShowGraph   = $false   # NEW: show history sparkline (off by default to keep panel compact)
     AutoCheckUpdates = $true
+    LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
+    AlertState = @{}
 }

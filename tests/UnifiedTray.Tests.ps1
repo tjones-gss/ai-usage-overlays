@@ -62,6 +62,25 @@ Describe 'Unified tray refresh menu' {
         $script:UnifiedTraySource | Should -Match '\$script:Cfg.LastNotifiedUpdateVersion = Get-AppUpdateVersionKey \$info'
         $script:UnifiedTraySource | Should -Match 'Save-UnifiedState'
     }
+
+    It 'loads persisted threshold alert state into the tray alert cache' {
+        $root = Split-Path $PSScriptRoot -Parent
+        $unifiedStateSource = Get-Content (Join-Path $root 'src\UnifiedState.ps1') -Raw -Encoding UTF8
+
+        $unifiedStateSource | Should -Match '\$s\.PSObject\.Properties\[''AlertState''\]'
+        $unifiedStateSource | Should -Match 'Import-AlertStateFromConfig'
+    }
+
+    It 'keeps manual update checks bypassing the automatic interval gate' {
+        $manualCheck = [regex]::Match(
+            $script:UnifiedTraySource,
+            '(?s)function Invoke-ManualUpdateCheck \{(?<body>.*?)\n\}'
+        ).Groups['body'].Value
+
+        $manualCheck | Should -Match 'Start-AppUpdateBackgroundCheck'
+        $manualCheck | Should -Not -Match 'Test-AppUpdateAutoCheckDue'
+        $manualCheck | Should -Not -Match 'Invoke-AutomaticUpdateCheck'
+    }
 }
 
 Describe 'Unified tray threshold alerts' {
@@ -81,6 +100,8 @@ Describe 'Unified tray threshold alerts' {
         $script:WarnPct = 80
         $script:CritPct = 95
         $script:History = @()
+        $script:SaveUnifiedStateCalls = 0
+        function Save-UnifiedState { $script:SaveUnifiedStateCalls++ }
         $script:BalloonCalls = [System.Collections.Generic.List[object]]::new()
         $script:notify = [pscustomobject]@{}
         $script:notify | Add-Member -MemberType ScriptMethod -Name ShowBalloonTip -Value {
@@ -120,6 +141,44 @@ Describe 'Unified tray threshold alerts' {
 
         $script:BalloonCalls.Count | Should -Be 1
         $script:BalloonCalls[0].Title | Should -Be 'Claude Usage Warning'
+        $script:Cfg.AlertState['five_hour']['Level'] | Should -Be 80
+        $script:Cfg.AlertState['five_hour']['Reset'] | Should -Be '2026-07-06T18:00:00Z'
+    }
+
+    It 'does not refire a persisted warning alert after restart in the same reset window' {
+        $script:Cfg.AlertState = @{
+            five_hour = @{ Level = 80; Reset = '2026-07-06T18:00:00Z' }
+        }
+        . ([scriptblock]::Create($script:ThresholdAlertSource))
+
+        Check-Alert 'five_hour' 86
+
+        $script:BalloonCalls.Count | Should -Be 0
+    }
+
+    It 'does not refire a persisted critical alert after restart in the same reset window' {
+        $script:Cfg.AlertState = @{
+            five_hour = @{ Level = 95; Reset = '2026-07-06T18:00:00Z' }
+        }
+        . ([scriptblock]::Create($script:ThresholdAlertSource))
+
+        Check-Alert 'five_hour' 97
+
+        $script:BalloonCalls.Count | Should -Be 0
+    }
+
+    It 're-arms persisted alerting when usage drops below the warning threshold' {
+        $script:Cfg.AlertState = @{
+            five_hour = @{ Level = 95; Reset = '2026-07-06T18:00:00Z' }
+        }
+        . ([scriptblock]::Create($script:ThresholdAlertSource))
+
+        Check-Alert 'five_hour' 20
+        Check-Alert 'five_hour' 85
+
+        $script:BalloonCalls.Count | Should -Be 1
+        $script:BalloonCalls[0].Title | Should -Be 'Claude Usage Warning'
+        $script:Cfg.AlertState['five_hour']['Level'] | Should -Be 80
     }
 
     It 're-arms alerting when the reset window changes' {
@@ -130,6 +189,7 @@ Describe 'Unified tray threshold alerts' {
         Check-Alert 'five_hour' 85
 
         $script:BalloonCalls.Count | Should -Be 2
+        $script:Cfg.AlertState['five_hour']['Reset'] | Should -Be '2026-07-06T23:00:00Z'
     }
 
     It 'dismisses the current active alert condition for the current reset window' {
