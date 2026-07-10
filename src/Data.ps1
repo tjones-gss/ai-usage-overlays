@@ -346,6 +346,60 @@ function Get-ClaudeProfile {
     return ConvertTo-ClaudeIdentity $profile
 }
 
+function Select-ClaudeCredential {
+    param([string[]]$Paths)
+
+    $nowMs = [System.DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $bestValid = $null
+    $bestValidExpiresAt = 0L
+    $bestFallback = $null
+    $bestFallbackMtime = [datetime]::MinValue
+
+    foreach ($path in @($Paths | Select-Object -Unique)) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue)) { continue }
+
+        try {
+            $credentialFile = Get-Item -LiteralPath $path -ErrorAction Stop
+            $credentials = Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $oauth = $credentials.claudeAiOauth
+            $token = if ($oauth) { [string]$oauth.accessToken } else { $null }
+            if (-not $token) { continue }
+
+            if ($credentialFile.LastWriteTimeUtc -gt $bestFallbackMtime) {
+                $bestFallback = $token
+                $bestFallbackMtime = $credentialFile.LastWriteTimeUtc
+            }
+
+            $expiresAt = 0L
+            if ($oauth.expiresAt -and [long]::TryParse([string]$oauth.expiresAt, [ref]$expiresAt) -and
+                $expiresAt -gt $nowMs -and $expiresAt -gt $bestValidExpiresAt) {
+                $bestValid = $token
+                $bestValidExpiresAt = $expiresAt
+            }
+        } catch { }
+    }
+
+    if ($bestValid) { return $bestValid }
+    return $bestFallback
+}
+
+function Get-ClaudeProjectsDirCandidates {
+    param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:USERPROFILE) {
+        try { [void]$candidates.Add((Join-Path $env:USERPROFILE '.claude\projects')) } catch { }
+    }
+
+    foreach ($root in @($WslHomeRoots)) {
+        if ($root) {
+            try { [void]$candidates.Add((Join-Path $root '.claude\projects')) } catch { }
+        }
+    }
+
+    return @($candidates | Select-Object -Unique)
+}
+
 function Get-Usage {
     param(
         [int]$TimeoutSec = 20,
@@ -364,11 +418,31 @@ function Get-Usage {
         }
     }
 
-    $tok = $null
-    try { $tok = (Get-Content $script:CredPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch {
-        $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
+    $credentialPaths = [System.Collections.Generic.List[string]]::new()
+    if ($script:CredPath) { [void]$credentialPaths.Add($script:CredPath) }
+    foreach ($root in Get-WslHomeRoots) {
+        if ($root) {
+            try { [void]$credentialPaths.Add((Join-Path $root '.claude\.credentials.json')) } catch { }
+        }
     }
-    if (-not $tok) { $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return }
+
+    $candidatePaths = @($credentialPaths | Select-Object -Unique)
+    $tok = Select-ClaudeCredential $candidatePaths
+    if (-not $tok) {
+        $hasCredentialsFile = $false
+        foreach ($path in $candidatePaths) {
+            try {
+                if (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue) {
+                    $hasCredentialsFile = $true
+                    break
+                }
+            } catch { }
+        }
+        if (-not $hasCredentialsFile) {
+            $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
+        }
+        $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
+    }
     try {
         $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
             Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
@@ -559,17 +633,29 @@ function Get-Stats {
     $cachePath = Join-Path $script:AppDir 'stats-cache.json'
     Import-StatsFileCache $cachePath
 
-    $projDir = Join-Path $env:USERPROFILE '.claude\projects'
-    if (-not (Test-Path $projDir)) {
+    $projectDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($dir in Get-ClaudeProjectsDirCandidates) {
+        try {
+            if (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue) {
+                [void]$projectDirs.Add($dir)
+            }
+        } catch { }
+    }
+
+    if ($projectDirs.Count -eq 0) {
         Write-Log 'Get-Stats: ~/.claude/projects not found - no transcript data'
         return
     }
 
-    try {
-        $files = Get-ChildItem $projDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
-    } catch {
-        Write-Log "Get-Stats: failed to enumerate transcripts - $($_.Exception.Message)"
-        return
+    $files = [System.Collections.Generic.List[object]]::new()
+    foreach ($dir in $projectDirs) {
+        try {
+            foreach ($file in @(Get-ChildItem -LiteralPath $dir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop)) {
+                [void]$files.Add($file)
+            }
+        } catch {
+            Write-Log "Get-Stats: failed to enumerate transcripts in $dir - $($_.Exception.Message)"
+        }
     }
 
     # Deduplicate across all files using msgId:requestId key

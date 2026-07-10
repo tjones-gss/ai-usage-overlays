@@ -4,6 +4,7 @@ BeforeAll {
     $script:AppDir = $root
     $script:ErrLog = Join-Path ([System.IO.Path]::GetTempPath()) 'overlay-test-errors.log'
     . (Join-Path $root 'src\Config.ps1')
+    function Get-WslHomeRoots { return @() }
     $script:CodexPrices = @{
         'gpt-5.5' = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
         default   = @{ in = 1.00; cachedIn = 0.10; out = 2.00 }
@@ -156,9 +157,23 @@ Describe 'Estimate-CodexCost' {
     }
 }
 
+Describe 'Get-CodexSessionDirCandidates' {
+    It 'includes sessions directories from supplied WSL home roots' {
+        $wslHome = '\\wsl.localhost\Ubuntu\home\alice'
+
+        $dirs = Get-CodexSessionDirCandidates -WslHomeRoots @($wslHome)
+
+        $dirs | Should -Contain '\\wsl.localhost\Ubuntu\home\alice\.codex\sessions'
+    }
+}
+
 Describe 'Get-CodexStats' {
     BeforeEach {
-        $script:OriginalCodexHome = $env:CODEX_HOME
+        $script:OriginalCodexEnvironment = @{}
+        foreach ($name in @('CODEX_HOME', 'USERPROFILE', 'HOME', 'LOCALAPPDATA', 'APPDATA')) {
+            $script:OriginalCodexEnvironment[$name] = [System.Environment]::GetEnvironmentVariable($name, 'Process')
+            [System.Environment]::SetEnvironmentVariable($name, $TestDrive, 'Process')
+        }
         $script:CodexSessionsDir = Join-Path $TestDrive 'sessions'
         if (Test-Path $script:CodexSessionsDir) {
             Remove-Item -Path $script:CodexSessionsDir -Recurse -Force
@@ -169,10 +184,8 @@ Describe 'Get-CodexStats' {
     }
 
     AfterEach {
-        if ($null -eq $script:OriginalCodexHome) {
-            Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
-        } else {
-            $env:CODEX_HOME = $script:OriginalCodexHome
+        foreach ($name in $script:OriginalCodexEnvironment.Keys) {
+            [System.Environment]::SetEnvironmentVariable($name, $script:OriginalCodexEnvironment[$name], 'Process')
         }
     }
 
@@ -321,6 +334,7 @@ Describe 'Get-CodexStats' {
 
     It 'tolerates a missing sessions directory' {
         $script:CodexSessionsDir = Join-Path $TestDrive 'missing'
+        Remove-Item -Path (Join-Path $TestDrive 'sessions') -Recurse -Force
         { Get-CodexStats } | Should -Not -Throw
         $script:CodexStats | Should -BeNullOrEmpty
     }
@@ -347,5 +361,32 @@ Describe 'Get-CodexStats' {
         $script:CodexSessionsDir | Should -Be (Join-Path $codexHome 'sessions')
         $script:CodexStats.InTokens | Should -Be 1000
         $script:CodexStats.Sessions | Should -Be 1
+    }
+
+    It 'merges session records from every existing candidate directory' {
+        $additionalDir = Join-Path $TestDrive 'additional-sessions'
+        $baseTime = (Get-Date).Date.AddHours(10)
+        $timestamp = New-TestTimestamp $baseTime
+
+        Write-CodexFixture 'primary.jsonl' @(
+            @{ timestamp=$timestamp; type='session_meta'; payload=@{ session_id='primary'; timestamp=$timestamp } }
+            (New-CodexTokenEvent $timestamp 100 0 10)
+        ) | Out-Null
+
+        $secondaryFile = Join-Path $additionalDir 'secondary.jsonl'
+        New-Item -ItemType Directory -Path $additionalDir -Force | Out-Null
+        @(
+            @{ timestamp=$timestamp; type='session_meta'; payload=@{ session_id='secondary'; timestamp=$timestamp } }
+            (New-CodexTokenEvent $timestamp 200 0 20)
+        ) | ForEach-Object { $_ | ConvertTo-Json -Depth 10 -Compress } |
+            Set-Content -Path $secondaryFile -Encoding UTF8
+
+        Mock Get-CodexSessionDirCandidates { @($script:CodexSessionsDir, $additionalDir) }
+
+        Get-CodexStats
+
+        $script:CodexStats.InTokens | Should -Be 300
+        $script:CodexStats.OutTokens | Should -Be 30
+        $script:CodexStats.Sessions | Should -Be 2
     }
 }

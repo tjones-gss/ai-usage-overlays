@@ -1,6 +1,8 @@
 # CodexData.ps1 - Codex session parsing and usage cost estimation
 
 function Get-CodexSessionDirCandidates {
+    param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
+
     $candidates = [System.Collections.Generic.List[string]]::new()
 
     foreach ($root in @($env:CODEX_HOME)) {
@@ -27,6 +29,14 @@ function Get-CodexSessionDirCandidates {
         }
     }
 
+    foreach ($root in @($WslHomeRoots)) {
+        if ($root) {
+            try {
+                [void]$candidates.Add((Join-Path $root '.codex\sessions'))
+            } catch { }
+        }
+    }
+
     return @($candidates | Select-Object -Unique)
 }
 
@@ -40,7 +50,7 @@ function Resolve-CodexSessionsDir {
     }
 
     foreach ($dir in @($candidates | Select-Object -Unique)) {
-        if ($dir -and (Test-Path $dir)) { return $dir }
+        if ($dir -and (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue)) { return $dir }
     }
 
     return @($candidates | Select-Object -First 1)
@@ -301,17 +311,36 @@ function Get-CodexStats {
         $script:CodexSessionsDir = $sessionsDir
     }
 
-    if (-not $script:CodexSessionsDir -or -not (Test-Path $script:CodexSessionsDir)) {
-        $candidateText = (Get-CodexSessionDirCandidates) -join '; '
+    $candidateDirs = [System.Collections.Generic.List[string]]::new()
+    if ($script:CodexSessionsDir) { [void]$candidateDirs.Add($script:CodexSessionsDir) }
+    foreach ($dir in Get-CodexSessionDirCandidates) {
+        if ($dir) { [void]$candidateDirs.Add($dir) }
+    }
+
+    $sessionDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($dir in @($candidateDirs | Select-Object -Unique)) {
+        try {
+            if (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue) {
+                [void]$sessionDirs.Add($dir)
+            }
+        } catch { }
+    }
+
+    if ($sessionDirs.Count -eq 0) {
+        $candidateText = (@($candidateDirs | Select-Object -Unique)) -join '; '
         Write-CodexLog "Get-CodexStats: Codex sessions directory not found - checked: $candidateText"
         return
     }
 
-    try {
-        $files = Get-ChildItem $script:CodexSessionsDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
-    } catch {
-        Write-CodexLog "Get-CodexStats: failed to enumerate sessions - $($_.Exception.Message)"
-        return
+    $files = [System.Collections.Generic.List[object]]::new()
+    foreach ($dir in $sessionDirs) {
+        try {
+            foreach ($file in @(Get-ChildItem -LiteralPath $dir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop)) {
+                [void]$files.Add($file)
+            }
+        } catch {
+            Write-CodexLog "Get-CodexStats: failed to enumerate sessions in $dir - $($_.Exception.Message)"
+        }
     }
 
     $allRecords = [System.Collections.Generic.List[object]]::new()
