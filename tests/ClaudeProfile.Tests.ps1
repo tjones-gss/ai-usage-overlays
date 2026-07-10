@@ -56,6 +56,22 @@ Describe 'Get-ClaudeDataRoots' {
         $script:CredPath | Should -Be (Join-Path $wslClaude '.credentials.json')
         $script:ClaudeProjectDirs | Should -Be @()
     }
+
+    It 'prefers the last credential source that successfully fetched usage' {
+        $script:AppDir = Join-Path $TestDrive 'preference'
+        New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null
+        $windows = Join-Path $TestDrive 'windows.json'
+        $wsl = Join-Path $TestDrive 'wsl.json'
+        Set-Content $windows '{"claudeAiOauth":{"accessToken":"windows"}}'
+        Set-Content $wsl '{"claudeAiOauth":{"accessToken":"wsl"}}'
+        $script:CredPath = $windows
+        Save-PreferredClaudeCredentialPath $wsl
+        Mock Get-ClaudeDataRoots { @() }
+
+        Resolve-ClaudeDataPaths
+
+        $script:ClaudeCredentialPaths | Should -Be @($wsl, $windows)
+    }
 }
 
 Describe 'Get-Usage Claude profile behavior' {

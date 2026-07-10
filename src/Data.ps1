@@ -50,20 +50,37 @@ function Get-ClaudeDataRoots {
     return $roots.ToArray()
 }
 
+function Get-ClaudeCredentialPreferencePath {
+    Join-Path $script:AppDir 'claude-credential-preference.json'
+}
+
+function Get-PreferredClaudeCredentialPath {
+    try {
+        $path = Get-ClaudeCredentialPreferencePath
+        if (-not (Test-Path -LiteralPath $path)) { return $null }
+        return [string]((Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json).CredentialPath)
+    } catch { return $null }
+}
+
+function Save-PreferredClaudeCredentialPath([string]$CredentialPath) {
+    if (-not $CredentialPath) { return }
+    try {
+        @{ CredentialPath = $CredentialPath } | ConvertTo-Json | Set-Content -LiteralPath (Get-ClaudeCredentialPreferencePath) -Encoding UTF8
+    } catch { Write-Log "Save-PreferredClaudeCredentialPath failed - $($_.Exception.Message)" }
+}
+
 function Resolve-ClaudeDataPaths {
     $roots = @(Get-ClaudeDataRoots)
     $script:ClaudeProjectDirs = @($roots | ForEach-Object { Join-Path $_ 'projects' } | Where-Object { Test-Path -LiteralPath $_ })
 
     $credentialPaths = [System.Collections.Generic.List[string]]::new()
-    if ($script:CredPath -and (Test-Path -LiteralPath $script:CredPath)) {
-        $credentialPaths.Add($script:CredPath)
-    }
+    $addCredential = { param($Path) if ($Path -and (Test-Path -LiteralPath $Path) -and -not $credentialPaths.Contains($Path)) { $credentialPaths.Add($Path) } }
+    & $addCredential (Get-PreferredClaudeCredentialPath)
+    & $addCredential $script:CredPath
 
     foreach ($root in $roots) {
         $candidate = Join-Path $root '.credentials.json'
-        if ((Test-Path -LiteralPath $candidate) -and -not $credentialPaths.Contains($candidate)) {
-            $credentialPaths.Add($candidate)
-        }
+        & $addCredential $candidate
     }
 
     $script:ClaudeCredentialPaths = $credentialPaths.ToArray()
@@ -447,6 +464,7 @@ function Get-Usage {
                 }
                 $tok = $candidateToken
                 $script:CredPath = $credentialPath
+                Save-PreferredClaudeCredentialPath $credentialPath
                 break
             } catch {
                 $code = $null
