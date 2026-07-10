@@ -334,6 +334,7 @@ $script:CodexStatsScript = {
 }
 
 $script:pollJobs = @{}
+$script:pollJobStartedAt = @{}
 $script:LastClaudeUsageSignature = $null
 $script:ClaudeUnchangedPolls = 0
 
@@ -434,16 +435,48 @@ function Start-AllRefreshJobs {
         if ($script:pollJobs.ContainsKey($kind)) {
             $existing = $script:pollJobs[$kind]
             if ($existing.State -eq 'Running' -or $existing.State -eq 'NotStarted') {
-                Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
-                continue
+                $ceilingSeconds = (2 * $UsageTimeoutSec + 20)
+                if (-not $script:pollJobStartedAt.ContainsKey($kind)) {
+                    $script:pollJobStartedAt[$kind] = Get-Date
+                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                    continue
+                }
+
+                $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$kind]).TotalSeconds
+                if ($elapsedSeconds -gt $ceilingSeconds) {
+                    Write-Log "Start-AllRefreshJobs: previous $kind refresh hung > $ceilingSeconds seconds; reaping and restarting."
+                    Stop-Job $existing -ErrorAction SilentlyContinue
+                    Remove-Job $existing -Force -ErrorAction SilentlyContinue
+                    $script:pollJobs.Remove($kind)
+                    $script:pollJobStartedAt.Remove($kind)
+                } else {
+                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                    continue
+                }
             }
 
-            Remove-Job $existing -Force -ErrorAction SilentlyContinue
-            $script:pollJobs.Remove($kind)
+            if ($script:pollJobs.ContainsKey($kind)) {
+                Remove-Job $existing -Force -ErrorAction SilentlyContinue
+                $script:pollJobs.Remove($kind)
+            }
         }
 
         $script:pollJobs[$kind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
+        $script:pollJobStartedAt[$kind] = Get-Date
     }
+}
+
+# Merge a freshly-returned Claude usage State onto the previous one, preserving
+# last-known-good Data when the new result carries none (backoff/auth/stale/error
+# paths return no Data) so the HUD shows stale values, not blank bars.
+function Resolve-ClaudeUsageState {
+    param($Previous, $Incoming)
+
+    if (-not $Incoming) { return $Previous }
+    if ($null -eq $Incoming.Data -and $Previous -and $null -ne $Previous.Data) {
+        $Incoming.Data = $Previous.Data
+    }
+    return $Incoming
 }
 
 function Complete-RefreshJobs {
@@ -464,8 +497,8 @@ function Complete-RefreshJobs {
                 $applied = $true
                 switch ($resultKind) {
                     'ClaudeUsage' {
-                        $script:State           = $r['State']
-                        $script:ClaudeIdentity  = $r['ClaudeIdentity']
+                        $script:State           = Resolve-ClaudeUsageState $script:State $r['State']
+                        if ($r['ClaudeIdentity']) { $script:ClaudeIdentity = $r['ClaudeIdentity'] }
                         $script:LiveData        = $r['LiveData']
                         $script:SummaryData     = $r['SummaryData']
                         $script:LocalData       = $r['LocalData']
@@ -500,6 +533,7 @@ function Complete-RefreshJobs {
         } finally {
             Remove-Job $job -Force -ErrorAction SilentlyContinue
             $script:pollJobs.Remove($kind)
+            $script:pollJobStartedAt.Remove($kind)
         }
     }
 
