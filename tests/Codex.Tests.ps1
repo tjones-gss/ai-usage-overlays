@@ -296,6 +296,31 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($weekReset).LocalDateTime)
     }
 
+    It 'treats the longest-window limit as weekly even when Codex reports it in the primary slot' {
+        $baseTime = (Get-Date).Date.AddHours(11)
+        $tsMeta  = New-TestTimestamp $baseTime
+        $tsToken = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $weekReset = 1783425072
+
+        # New Codex format: a single weekly limit, carried in the primary slot.
+        $newFormatLimits = @{
+            limit_id  = 'codex'
+            primary   = @{ used_percent = 94.0; window_minutes = 10080; resets_at = $weekReset }
+            plan_type = 'plus'
+        }
+
+        Write-CodexFixture '2026\06\11\new-format-test.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='newfmt'; timestamp=$tsMeta } }
+            (New-CodexTokenEvent $tsToken 100 10 20 $newFormatLimits)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.WeekPct | Should -Be 94.0
+        $script:CodexStats.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($weekReset).LocalDateTime)
+        $script:CodexStats.FiveHourPct | Should -BeNullOrEmpty
+    }
+
     It 'still parses legacy top-level token_count events' {
         Write-CodexFixture '2026\06\10\legacy-test.jsonl' @(
             @{ timestamp='2026-06-10T10:00:00Z'; type='session_meta'; payload=@{ session_id='legacy'; timestamp='2026-06-10T10:00:00Z' } }

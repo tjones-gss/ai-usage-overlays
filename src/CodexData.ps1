@@ -274,24 +274,46 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
     }
 
     if ($rateLimits) {
-        $primary = $rateLimits.primary
-        if ($primary) {
-            if ($null -ne $primary.used_percent) {
-                $fiveHourPct = [double]$primary.used_percent
+        # Codex reports one or two rate-limit windows. Historically the short
+        # (5-hour) window was 'primary' and the weekly window was 'secondary',
+        # but newer Codex plans surface only the weekly limit and carry it in
+        # the 'primary' slot. Classify by window_minutes when present (weekly =
+        # the longest window) and fall back to the legacy slot convention when
+        # Codex omits the window metadata.
+        $fiveHour = $null
+        $weekly   = $null
+
+        $candidates = @()
+        if ($rateLimits.primary)   { $candidates += $rateLimits.primary }
+        if ($rateLimits.secondary) { $candidates += $rateLimits.secondary }
+
+        $withWindows = @($candidates | Where-Object {
+            ($null -ne $_.window_minutes) -and ($null -ne $_.used_percent)
+        })
+
+        if ($withWindows.Count -ge 2) {
+            $sorted   = @($withWindows | Sort-Object { [double]$_.window_minutes })
+            $fiveHour = $sorted[0]
+            $weekly   = $sorted[-1]
+        } elseif ($withWindows.Count -eq 1) {
+            # A single reported window: a day or longer is the weekly limit.
+            if ([double]$withWindows[0].window_minutes -ge 1440) {
+                $weekly = $withWindows[0]
+            } else {
+                $fiveHour = $withWindows[0]
             }
-            if ($null -ne $primary.resets_at) {
-                $fiveHourResetsAt = Convert-CodexEpochSeconds $primary.resets_at
-            }
+        } else {
+            $fiveHour = $rateLimits.primary
+            $weekly   = $rateLimits.secondary
         }
 
-        $secondary = $rateLimits.secondary
-        if ($secondary) {
-            if ($null -ne $secondary.used_percent) {
-                $weekPct = [double]$secondary.used_percent
-            }
-            if ($null -ne $secondary.resets_at) {
-                $weekResetsAt = Convert-CodexEpochSeconds $secondary.resets_at
-            }
+        if ($fiveHour) {
+            if ($null -ne $fiveHour.used_percent) { $fiveHourPct = [double]$fiveHour.used_percent }
+            if ($null -ne $fiveHour.resets_at)    { $fiveHourResetsAt = Convert-CodexEpochSeconds $fiveHour.resets_at }
+        }
+        if ($weekly) {
+            if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
+            if ($null -ne $weekly.resets_at)    { $weekResetsAt = Convert-CodexEpochSeconds $weekly.resets_at }
         }
     }
 
