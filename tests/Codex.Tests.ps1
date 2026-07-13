@@ -415,3 +415,48 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.Sessions | Should -Be 2
     }
 }
+
+Describe 'ConvertFrom-CodexUsageResponse' {
+    It 'parses the new single weekly window and reset-credit count' {
+        $resetAt = 1784488309
+        $obj = [pscustomobject]@{
+            plan_type = 'plus'
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{
+                    used_percent = 94
+                    limit_window_seconds = 604800
+                    reset_at = $resetAt
+                }
+                secondary_window = $null
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 2 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.WeekPct | Should -Be 94
+        $u.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($resetAt).LocalDateTime)
+        $u.ResetsAvailable | Should -Be 2
+        $u.PlanType | Should -Be 'plus'
+        $u.FiveHourPct | Should -BeNullOrEmpty
+    }
+
+    It 'picks the longest window as weekly when both windows are present' {
+        $obj = [pscustomobject]@{
+            rate_limit = [pscustomobject]@{
+                primary_window   = [pscustomobject]@{ used_percent = 40; limit_window_seconds = 18000;  reset_at = 1784000000 }
+                secondary_window = [pscustomobject]@{ used_percent = 12; limit_window_seconds = 604800; reset_at = 1784488309 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.WeekPct | Should -Be 12
+        $u.FiveHourPct | Should -Be 40
+        $u.ResetsAvailable | Should -BeNullOrEmpty
+    }
+
+    It 'returns null for an empty response' {
+        ConvertFrom-CodexUsageResponse $null | Should -BeNullOrEmpty
+    }
+}
