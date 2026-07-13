@@ -274,24 +274,46 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
     }
 
     if ($rateLimits) {
-        $primary = $rateLimits.primary
-        if ($primary) {
-            if ($null -ne $primary.used_percent) {
-                $fiveHourPct = [double]$primary.used_percent
+        # Codex reports one or two rate-limit windows. Historically the short
+        # (5-hour) window was 'primary' and the weekly window was 'secondary',
+        # but newer Codex plans surface only the weekly limit and carry it in
+        # the 'primary' slot. Classify by window_minutes when present (weekly =
+        # the longest window) and fall back to the legacy slot convention when
+        # Codex omits the window metadata.
+        $fiveHour = $null
+        $weekly   = $null
+
+        $candidates = @()
+        if ($rateLimits.primary)   { $candidates += $rateLimits.primary }
+        if ($rateLimits.secondary) { $candidates += $rateLimits.secondary }
+
+        $withWindows = @($candidates | Where-Object {
+            ($null -ne $_.window_minutes) -and ($null -ne $_.used_percent)
+        })
+
+        if ($withWindows.Count -ge 2) {
+            $sorted   = @($withWindows | Sort-Object { [double]$_.window_minutes })
+            $fiveHour = $sorted[0]
+            $weekly   = $sorted[-1]
+        } elseif ($withWindows.Count -eq 1) {
+            # A single reported window: a day or longer is the weekly limit.
+            if ([double]$withWindows[0].window_minutes -ge 1440) {
+                $weekly = $withWindows[0]
+            } else {
+                $fiveHour = $withWindows[0]
             }
-            if ($null -ne $primary.resets_at) {
-                $fiveHourResetsAt = Convert-CodexEpochSeconds $primary.resets_at
-            }
+        } else {
+            $fiveHour = $rateLimits.primary
+            $weekly   = $rateLimits.secondary
         }
 
-        $secondary = $rateLimits.secondary
-        if ($secondary) {
-            if ($null -ne $secondary.used_percent) {
-                $weekPct = [double]$secondary.used_percent
-            }
-            if ($null -ne $secondary.resets_at) {
-                $weekResetsAt = Convert-CodexEpochSeconds $secondary.resets_at
-            }
+        if ($fiveHour) {
+            if ($null -ne $fiveHour.used_percent) { $fiveHourPct = [double]$fiveHour.used_percent }
+            if ($null -ne $fiveHour.resets_at)    { $fiveHourResetsAt = Convert-CodexEpochSeconds $fiveHour.resets_at }
+        }
+        if ($weekly) {
+            if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
+            if ($null -ne $weekly.resets_at)    { $weekResetsAt = Convert-CodexEpochSeconds $weekly.resets_at }
         }
     }
 
@@ -309,8 +331,114 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         FiveHourResetsAt = $fiveHourResetsAt
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
+        ResetsAvailable  = $null
+        PlanType         = $null
         Model            = $currentModel
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+    }
+}
+
+# Parse the Codex live usage endpoint (chatgpt.com/backend-api/wham/usage)
+# response into overlay fields. Weekly = the longest limit window; the reset
+# credit count backs the "N resets available" line. Pure so it can be tested
+# without a network call.
+function ConvertFrom-CodexUsageResponse($obj) {
+    if (-not $obj) { return $null }
+
+    $weekPct = $null; $weekResetsAt = $null
+    $fiveHourPct = $null; $fiveHourResetsAt = $null
+
+    $rl = $obj.rate_limit
+    if ($rl) {
+        $windows = @()
+        if ($rl.primary_window)   { $windows += $rl.primary_window }
+        if ($rl.secondary_window) { $windows += $rl.secondary_window }
+
+        $withSecs = @($windows | Where-Object {
+            ($null -ne $_.limit_window_seconds) -and ($null -ne $_.used_percent)
+        })
+
+        $weekly = $null; $fiveHour = $null
+        if ($withSecs.Count -ge 2) {
+            $sorted   = @($withSecs | Sort-Object { [double]$_.limit_window_seconds })
+            $fiveHour = $sorted[0]
+            $weekly   = $sorted[-1]
+        } elseif ($withSecs.Count -eq 1) {
+            # A day or longer is the weekly window.
+            if ([double]$withSecs[0].limit_window_seconds -ge 86400) {
+                $weekly = $withSecs[0]
+            } else {
+                $fiveHour = $withSecs[0]
+            }
+        }
+
+        if ($weekly) {
+            if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
+            if ($null -ne $weekly.reset_at)     { $weekResetsAt = Convert-CodexEpochSeconds $weekly.reset_at }
+        }
+        if ($fiveHour) {
+            if ($null -ne $fiveHour.used_percent) { $fiveHourPct = [double]$fiveHour.used_percent }
+            if ($null -ne $fiveHour.reset_at)     { $fiveHourResetsAt = Convert-CodexEpochSeconds $fiveHour.reset_at }
+        }
+    }
+
+    $resetsAvailable = $null
+    if ($obj.rate_limit_reset_credits -and ($null -ne $obj.rate_limit_reset_credits.available_count)) {
+        $resetsAvailable = [int]$obj.rate_limit_reset_credits.available_count
+    }
+
+    return @{
+        WeekPct          = $weekPct
+        WeekResetsAt     = $weekResetsAt
+        FiveHourPct      = $fiveHourPct
+        FiveHourResetsAt = $fiveHourResetsAt
+        ResetsAvailable  = $resetsAvailable
+        PlanType         = $obj.plan_type
+    }
+}
+
+# Fetch live Codex usage from the ChatGPT backend using the local Codex OAuth
+# token. The new Codex no longer records rate limits in session logs, so this
+# authenticated call is the only source for the weekly bar and reset credits.
+# Returns $null on any failure (missing/expired token, network error) so the
+# overlay falls back to whatever it already has instead of breaking.
+function Get-CodexLiveUsage {
+    param([int]$TimeoutSec = 15)
+
+    $authPath = Join-Path $env:USERPROFILE '.codex\auth.json'
+    if (-not (Test-Path -LiteralPath $authPath)) { return $null }
+
+    try {
+        $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-CodexLog "Get-CodexLiveUsage: cannot read auth.json - $($_.Exception.Message)"
+        return $null
+    }
+
+    $token = $null
+    if ($auth.tokens -and $auth.tokens.access_token) { $token = $auth.tokens.access_token }
+    elseif ($auth.access_token) { $token = $auth.access_token }
+    if (-not $token) { return $null }
+
+    $acct = $auth.account_id
+    if (-not $acct -and $auth.tokens) { $acct = $auth.tokens.account_id }
+
+    $headers = @{
+        'Authorization' = "Bearer $token"
+        'originator'    = 'codex_cli_rs'
+        'User-Agent'    = 'codex_cli_rs/0.144.2 (ai-usage-overlay)'
+        'Accept'        = 'application/json'
+    }
+    if ($acct) { $headers['chatgpt-account-id'] = "$acct" }
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $resp = Invoke-RestMethod -Uri 'https://chatgpt.com/backend-api/wham/usage' `
+            -Headers $headers -Method GET -TimeoutSec $TimeoutSec
+        return ConvertFrom-CodexUsageResponse $resp
+    } catch {
+        Write-CodexLog "Get-CodexLiveUsage: request failed - $($_.Exception.Message)"
+        return $null
     }
 }
 
@@ -498,5 +626,25 @@ function Get-CodexStats {
         $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"
+    }
+
+    # The current Codex no longer persists rate limits to session logs, so the
+    # weekly bar and reset-credit count come from the live usage endpoint. Prefer
+    # live values when available; otherwise keep whatever the logs provided.
+    try {
+        $live = Get-CodexLiveUsage
+        if ($live) {
+            if (-not $script:CodexStats) {
+                $script:CodexStats = Measure-CodexStats @() (Get-Date)
+            }
+            if ($null -ne $live.WeekPct)          { $script:CodexStats.WeekPct = $live.WeekPct }
+            if ($null -ne $live.WeekResetsAt)     { $script:CodexStats.WeekResetsAt = $live.WeekResetsAt }
+            if ($null -ne $live.FiveHourPct)      { $script:CodexStats.FiveHourPct = $live.FiveHourPct }
+            if ($null -ne $live.FiveHourResetsAt) { $script:CodexStats.FiveHourResetsAt = $live.FiveHourResetsAt }
+            $script:CodexStats.ResetsAvailable = $live.ResetsAvailable
+            if ($live.PlanType) { $script:CodexStats.PlanType = $live.PlanType }
+        }
+    } catch {
+        Write-CodexLog "Get-CodexStats: live usage merge failed - $($_.Exception.Message)"
     }
 }

@@ -296,6 +296,31 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($weekReset).LocalDateTime)
     }
 
+    It 'treats the longest-window limit as weekly even when Codex reports it in the primary slot' {
+        $baseTime = (Get-Date).Date.AddHours(11)
+        $tsMeta  = New-TestTimestamp $baseTime
+        $tsToken = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $weekReset = 1783425072
+
+        # New Codex format: a single weekly limit, carried in the primary slot.
+        $newFormatLimits = @{
+            limit_id  = 'codex'
+            primary   = @{ used_percent = 94.0; window_minutes = 10080; resets_at = $weekReset }
+            plan_type = 'plus'
+        }
+
+        Write-CodexFixture '2026\06\11\new-format-test.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='newfmt'; timestamp=$tsMeta } }
+            (New-CodexTokenEvent $tsToken 100 10 20 $newFormatLimits)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.WeekPct | Should -Be 94.0
+        $script:CodexStats.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($weekReset).LocalDateTime)
+        $script:CodexStats.FiveHourPct | Should -BeNullOrEmpty
+    }
+
     It 'still parses legacy top-level token_count events' {
         Write-CodexFixture '2026\06\10\legacy-test.jsonl' @(
             @{ timestamp='2026-06-10T10:00:00Z'; type='session_meta'; payload=@{ session_id='legacy'; timestamp='2026-06-10T10:00:00Z' } }
@@ -388,5 +413,50 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.InTokens | Should -Be 300
         $script:CodexStats.OutTokens | Should -Be 30
         $script:CodexStats.Sessions | Should -Be 2
+    }
+}
+
+Describe 'ConvertFrom-CodexUsageResponse' {
+    It 'parses the new single weekly window and reset-credit count' {
+        $resetAt = 1784488309
+        $obj = [pscustomobject]@{
+            plan_type = 'plus'
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{
+                    used_percent = 94
+                    limit_window_seconds = 604800
+                    reset_at = $resetAt
+                }
+                secondary_window = $null
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 2 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.WeekPct | Should -Be 94
+        $u.WeekResetsAt | Should -Be ([System.DateTimeOffset]::FromUnixTimeSeconds($resetAt).LocalDateTime)
+        $u.ResetsAvailable | Should -Be 2
+        $u.PlanType | Should -Be 'plus'
+        $u.FiveHourPct | Should -BeNullOrEmpty
+    }
+
+    It 'picks the longest window as weekly when both windows are present' {
+        $obj = [pscustomobject]@{
+            rate_limit = [pscustomobject]@{
+                primary_window   = [pscustomobject]@{ used_percent = 40; limit_window_seconds = 18000;  reset_at = 1784000000 }
+                secondary_window = [pscustomobject]@{ used_percent = 12; limit_window_seconds = 604800; reset_at = 1784488309 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.WeekPct | Should -Be 12
+        $u.FiveHourPct | Should -Be 40
+        $u.ResetsAvailable | Should -BeNullOrEmpty
+    }
+
+    It 'returns null for an empty response' {
+        ConvertFrom-CodexUsageResponse $null | Should -BeNullOrEmpty
     }
 }

@@ -276,33 +276,7 @@ $xaml = @'
           </Border>
 
           <StackPanel x:Name="codexBody">
-            <!-- 5h metric -->
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="codexFiveLabel" Grid.Column="0" Text="5-HOUR"
-                           Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
-                <TextBlock Grid.Column="1" x:Name="codexFivePct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
-                <TextBlock Grid.Column="2" x:Name="codexFiveReset" Text=""
-                           Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-              </Grid>
-              <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
-                <Border x:Name="codexFiveBar" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="250">
-                  <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                      <GradientStop Color="#0369A1" Offset="0"/><GradientStop Color="#38BDF8" Offset="1"/>
-                    </LinearGradientBrush>
-                  </Border.Background>
-                </Border>
-              </Border>
-              <TextBlock x:Name="codexFiveSub" Text="used" Foreground="#5C7A96"
-                         FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
-            </StackPanel>
-
-            <!-- Weekly metric -->
+            <!-- Weekly metric (Codex now exposes a single weekly limit) -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,3">
                 <Grid.ColumnDefinitions>
@@ -328,6 +302,12 @@ $xaml = @'
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
+            <Grid x:Name="codexResetsRow" Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="RESETS" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="codexResetsText" Text="--" Foreground="#4ADE80" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
             <Grid Margin="0,0,0,2">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
@@ -558,11 +538,11 @@ function Apply-UnifiedTheme([string]$name) {
     }
 
     # Claude/Codex bars/labels/subs
-    $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexFiveBar','codexWeekBar')
-    $labels = @('fivehLabel','weekLabel','fabLabel','opusLabel','codexFiveLabel','codexWeekLabel')
-    $subs   = @('fivehSub','weekSub','fabSub','opusSub','codexFiveSub','codexWeekSub')
-    $fgKeys = @('FivehFg','WeekFg','FabFg','OpusFg','FivehFg','WeekFg')
-    $bgKeys = @('FivehColors','WeekColors','FabColors','OpusColors','FivehColors','WeekColors')
+    $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar')
+    $labels = @('fivehLabel','weekLabel','fabLabel','opusLabel','codexWeekLabel')
+    $subs   = @('fivehSub','weekSub','fabSub','opusSub','codexWeekSub')
+    $fgKeys = @('FivehFg','WeekFg','FabFg','OpusFg','WeekFg')
+    $bgKeys = @('FivehColors','WeekColors','FabColors','OpusColors','WeekColors')
     for ($i = 0; $i -lt $bars.Count; $i++) {
         $b = $script:window.FindName($bars[$i])
         if ($b -and $t[$bgKeys[$i]]) { $b.Background = New-GradientBrush $t[$bgKeys[$i]][0] $t[$bgKeys[$i]][1] }
@@ -803,8 +783,8 @@ function Update-ClaudeSection {
 function Update-CodexSection {
     $s = $script:CodexStats
     if (-not $s) {
-        Set-SectionBar 'codexFiveBar' 'codexFivePct' 'codexFiveSub' 'codexFiveReset' $null $null
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
+        $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
         $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
         $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
@@ -812,8 +792,15 @@ function Update-CodexSection {
         $cs = $script:window.FindName('codexSessText'); if ($cs) { $cs.Text = '--' }
         return
     }
-    Set-SectionBar 'codexFiveBar' 'codexFivePct' 'codexFiveSub' 'codexFiveReset' $s.FiveHourPct $s.FiveHourResetsAt
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
+    $codexResetsText = $script:window.FindName('codexResetsText')
+    if ($codexResetsText) {
+        if ($null -ne $s.ResetsAvailable) {
+            $codexResetsText.Text = ('{0} available' -f [int]$s.ResetsAvailable)
+        } else {
+            $codexResetsText.Text = '--'
+        }
+    }
     $script:window.FindName('codexValText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
     $script:window.FindName('codexTokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
     $script:window.FindName('codexTodayText').Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayTok), $s.TodayMsg)
