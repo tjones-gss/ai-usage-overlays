@@ -204,6 +204,66 @@ function Clamp-Position {
     $script:window.Top  = [math]::Max($wa.Top,  [math]::Min($script:window.Top,  $wa.Bottom - $h))
 }
 
+# Working areas (physical pixels) of every currently connected monitor.
+function Get-ScreenWorkAreas {
+    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+        $w = $_.WorkingArea
+        @{ Left = [double]$w.Left; Top = [double]$w.Top; Right = [double]$w.Right; Bottom = [double]$w.Bottom }
+    }
+}
+
+# Device (DPI) scale of the monitor the window is currently on. WPF Left/Top are
+# device-independent units; monitor rects are physical pixels, so the saved
+# position must be scaled before it can be compared against them.
+function Get-DeviceScale {
+    $src = [System.Windows.PresentationSource]::FromVisual($script:window)
+    if ($src) {
+        $t = $src.CompositionTarget.TransformToDevice
+        return @{ X = [double]$t.M11; Y = [double]$t.M22 }
+    }
+    return @{ X = 1.0; Y = 1.0 }
+}
+
+# True when the given rectangle overlaps any monitor work area by at least
+# $MinVisible pixels on both axes. All rects share one (pixel) coordinate space.
+# This is how we detect a window stranded on a now-disconnected monitor: its
+# saved rectangle intersects none of the monitors that are actually present.
+function Test-RectOnAnyScreen {
+    param(
+        [double]$Left,
+        [double]$Top,
+        [double]$Width,
+        [double]$Height,
+        [object[]]$Screens,
+        [double]$MinVisible = 48.0
+    )
+
+    $right  = $Left + $Width
+    $bottom = $Top  + $Height
+    foreach ($s in $Screens) {
+        $overlapX = [math]::Min($right,  [double]$s.Right)  - [math]::Max($Left, [double]$s.Left)
+        $overlapY = [math]::Min($bottom, [double]$s.Bottom) - [math]::Max($Top,  [double]$s.Top)
+        if ($overlapX -ge $MinVisible -and $overlapY -ge $MinVisible) { return $true }
+    }
+    return $false
+}
+
+# True when the saved config position lands enough of the window on a connected
+# monitor to be reachable. Guards against restoring onto a monitor that has since
+# been unplugged (the classic "overlay vanished" report).
+function Test-SavedPositionVisible {
+    if ($null -eq $script:Cfg.Left -or $null -eq $script:Cfg.Top) { return $false }
+    if (-not (Test-FiniteNumber $script:Cfg.Left) -or -not (Test-FiniteNumber $script:Cfg.Top)) { return $false }
+
+    $scale = Get-DeviceScale
+    $w = (Get-WindowDimension 'Width')  * $scale.X
+    $h = (Get-WindowDimension 'Height') * $scale.Y
+    $left = [double]$script:Cfg.Left * $scale.X
+    $top  = [double]$script:Cfg.Top  * $scale.Y
+
+    return Test-RectOnAnyScreen -Left $left -Top $top -Width $w -Height $h -Screens (Get-ScreenWorkAreas)
+}
+
 function Snap-ToCorner([string]$corner) {
     $wa = Get-WorkArea
     $w  = Get-WindowDimension 'Width'
@@ -221,7 +281,7 @@ function Position-Window {
     if ($script:Positioned) { return }
     $script:Positioned = $true
     Resize-ToContent
-    if ($null -ne $script:Cfg.Left) {
+    if (($null -ne $script:Cfg.Left) -and (Test-SavedPositionVisible)) {
         $script:window.Left = [double]$script:Cfg.Left
         $script:window.Top  = [double]$script:Cfg.Top
         Clamp-Position
