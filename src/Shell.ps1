@@ -459,6 +459,37 @@ $xaml = @'
 # Set-SectionBar - local copy of Ui.ps1 Set-Bar so Claude bars render without
 # depending on Ui.ps1 (Leg E does not dot-source Ui.ps1). Shows REMAINING/used %.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Set-BarWidth - eases a progress bar to a new Width instead of snapping.
+# Mirrors the Toggle-Section height-animation contract: any in-flight animation
+# is cleared (BeginAnimation $null) before we touch Width, and on Completed the
+# held value is handed back to the real DP - otherwise FillBehavior=HoldEnd pins
+# Width and silently swallows every later refresh's assignment (bars freeze).
+# Animates from the current ON-SCREEN width (ActualWidth) so mid-tween refreshes
+# hand off smoothly; sub-pixel deltas skip the tween to avoid per-refresh churn.
+# ---------------------------------------------------------------------------
+function Set-BarWidth($b, [double]$target) {
+    if (-not $b) { return }
+    $wp  = [System.Windows.FrameworkElement]::WidthProperty
+    $cur = $b.ActualWidth
+    if ([double]::IsNaN($cur) -or $cur -lt 0) { $cur = 0 }
+    $b.BeginAnimation($wp, $null)
+    if ([math]::Abs($target - $cur) -lt 1) { $b.Width = $target; return }
+    $anim = New-Object System.Windows.Media.Animation.DoubleAnimation
+    $anim.From     = $cur
+    $anim.To       = $target
+    $anim.Duration = [System.Windows.Duration]([TimeSpan]::FromMilliseconds(220))
+    $ease = New-Object System.Windows.Media.Animation.CubicEase
+    $ease.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+    $anim.EasingFunction = $ease
+    $bb = $b; $t = $target
+    $anim.Add_Completed({
+        $bb.BeginAnimation($wp, $null)
+        $bb.Width = $t
+    }.GetNewClosure())
+    $b.BeginAnimation($wp, $anim)
+}
+
 function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt) {
     $b  = $script:window.FindName($bar)
     $p  = $script:window.FindName($pct)
@@ -466,13 +497,13 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
     $r  = if ($reset) { $script:window.FindName($reset) } else { $null }
     if (-not $b -or -not $p) { return }
     if ($null -eq $util) {
-        $b.Width = 0; $p.Text = '--'; $p.Foreground = NewBrush '#F1F5F9'
+        Set-BarWidth $b 0; $p.Text = '--'; $p.Foreground = NewBrush '#F1F5F9'
         if ($sb) { $sb.Text = 'used' }
         if ($r)  { $r.Text  = '' }
         return
     }
     $u        = [double]$util
-    $b.Width  = [math]::Max(0, [math]::Min($script:BarTrackWidth, [math]::Round($u / 100.0 * $script:BarTrackWidth)))
+    Set-BarWidth $b ([math]::Max(0, [math]::Min($script:BarTrackWidth, [math]::Round($u / 100.0 * $script:BarTrackWidth))))
     $p.Text   = ('{0:0}%' -f $u)
     $fg = if ($u -ge $script:CritPct) { '#F87171' } elseif ($u -ge $script:WarnPct) { '#FBBF24' } else { '#F1F5F9' }
     $p.Foreground = NewBrush $fg
@@ -823,7 +854,7 @@ function Update-CursorSection {
         $over  = $used -gt $limit
 
         $bar = $script:window.FindName('reqBar')
-        $bar.Width = [math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth))
+        Set-BarWidth $bar ([math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth)))
 
         $pill = $script:window.FindName('overPill')
         if ($over) {
@@ -838,7 +869,7 @@ function Update-CursorSection {
         # billingCycleEnd is the real reset; startOfMonth is the cycle START (past) so it formats as "now"
         $script:window.FindName('reqReset').Text = Format-Reset $script:SummaryData.billingCycleEnd
     } else {
-        $script:window.FindName('reqBar').Width  = 0
+        Set-BarWidth ($script:window.FindName('reqBar')) 0
         $script:window.FindName('reqCount').Text = '-- / --'
         $pill = $script:window.FindName('overPill')
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
