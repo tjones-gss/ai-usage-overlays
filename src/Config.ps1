@@ -6,7 +6,7 @@
 $script:PollSeconds    = 180
 $script:TickSeconds    = 30
 $script:BarTrackWidth  = 250.0
-$script:CompactBarWidth = 150.0
+$script:CompactBarWidth = 120.0
 $script:WarnPct        = 80
 $script:CritPct        = 95
 $script:WorkdayStartHour = 8

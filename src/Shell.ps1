@@ -265,10 +265,10 @@ $xaml = @'
            <StackPanel x:Name="claudeCompact" Visibility="Collapsed">
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="fivehLabelC" Text="5-HOUR" Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="fivehBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#0369A1" Offset="0"/><GradientStop Color="#38BDF8" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
@@ -277,10 +277,10 @@ $xaml = @'
             </Grid>
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="weekLabelC" Text="WEEKLY" Foreground="#FB923C" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="weekBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#C2410C" Offset="0"/><GradientStop Color="#FB923C" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
@@ -289,10 +289,10 @@ $xaml = @'
             </Grid>
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="fabLabelC" Text="FABLE" Foreground="#C084FC" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="fabBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#6D28D9" Offset="0"/><GradientStop Color="#C084FC" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
@@ -301,10 +301,10 @@ $xaml = @'
             </Grid>
             <Grid x:Name="opusRowC" Margin="0,0,0,7" Visibility="Collapsed">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="opusLabelC" Text="OPUS" Foreground="#FDE047" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="opusBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#92400E" Offset="0"/><GradientStop Color="#FDE047" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
@@ -402,10 +402,10 @@ $xaml = @'
            <StackPanel x:Name="codexCompact" Visibility="Collapsed">
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="codexWeekLabelC" Text="WEEKLY" Foreground="#FB923C" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="codexWeekBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#C2410C" Offset="0"/><GradientStop Color="#FB923C" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
@@ -510,10 +510,10 @@ $xaml = @'
            <StackPanel x:Name="cursorCompact" Visibility="Collapsed">
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" x:Name="reqLabelC" Text="REQS" Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#0E2018" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#0E2018" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="reqBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#065F46" Offset="0"/><GradientStop Color="#34D399" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
