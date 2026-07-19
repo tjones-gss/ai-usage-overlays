@@ -252,6 +252,66 @@ $script:Themes = [ordered]@{
         OpusFg      = '#E8E8E8'
         Stripe      = '#E8E8E8','#B0B0B0','#7A7A7A','#4A4A4A'
     }
+    'Catppuccin' = @{
+        BgC1 = '#1E1E2E'; BgC2 = '#11111B'; BorderC1 = '#313244'; GssLabelFg = '#9399B2'
+        FivehColors = '#313E5F','#89B4FA'
+        WeekColors  = '#6E4A2E','#FAB387'
+        FabColors   = '#4B3A6B','#CBA6F7'
+        OpusColors  = '#6E5E2E','#F9E2AF'
+        FivehFg     = '#89B4FA'
+        WeekFg      = '#FAB387'
+        FabFg       = '#CBA6F7'
+        OpusFg      = '#F9E2AF'
+        Stripe      = '#89B4FA','#CBA6F7','#F5C2E7','#FAB387'
+    }
+    'Synthwave' = @{
+        BgC1 = '#241B2F'; BgC2 = '#0D0221'; BorderC1 = '#472066'; GssLabelFg = '#B383E0'
+        FivehColors = '#0E4F5C','#05D9E8'
+        WeekColors  = '#7A0F52','#FF6AC1'
+        FabColors   = '#4B1F8C','#B388FF'
+        OpusColors  = '#8A106B','#FE53BB'
+        FivehFg     = '#05D9E8'
+        WeekFg      = '#FF6AC1'
+        FabFg       = '#B388FF'
+        OpusFg      = '#FE53BB'
+        Stripe      = '#05D9E8','#B388FF','#FF6AC1','#FE53BB'
+    }
+    'Nord' = @{
+        BgC1 = '#2E3440'; BgC2 = '#242933'; BorderC1 = '#434C5E'; GssLabelFg = '#7B88A1'
+        FivehColors = '#3B4A5A','#88C0D0'
+        WeekColors  = '#6E4636','#D08770'
+        FabColors   = '#4C4257','#B48EAD'
+        OpusColors  = '#6E6142','#EBCB8B'
+        FivehFg     = '#88C0D0'
+        WeekFg      = '#D08770'
+        FabFg       = '#B48EAD'
+        OpusFg      = '#EBCB8B'
+        Stripe      = '#8FBCBB','#88C0D0','#81A1C1','#5E81AC'
+    }
+    'Dracula' = @{
+        BgC1 = '#282A36'; BgC2 = '#1A1B23'; BorderC1 = '#44475A'; GssLabelFg = '#6272A4'
+        FivehColors = '#1F5560','#8BE9FD'
+        WeekColors  = '#7A2F5C','#FF79C6'
+        FabColors   = '#4B3B7A','#BD93F9'
+        OpusColors  = '#5A6E2E','#F1FA8C'
+        FivehFg     = '#8BE9FD'
+        WeekFg      = '#FF79C6'
+        FabFg       = '#BD93F9'
+        OpusFg      = '#F1FA8C'
+        Stripe      = '#8BE9FD','#BD93F9','#FF79C6','#50FA7B'
+    }
+    'Rose Sunset' = @{
+        BgC1 = '#2A2436'; BgC2 = '#1C1622'; BorderC1 = '#504357'; GssLabelFg = '#C08497'
+        FivehColors = '#7A3A32','#FF9E80'
+        WeekColors  = '#7A5A1E','#F6C177'
+        FabColors   = '#7A2F52','#EB6F92'
+        OpusColors  = '#6E5A2E','#F2D5A0'
+        FivehFg     = '#FF9E80'
+        WeekFg      = '#F6C177'
+        FabFg       = '#EB6F92'
+        OpusFg      = '#F2D5A0'
+        Stripe      = '#FF9E80','#EB6F92','#C4A7E7','#F6C177'
+    }
 }
 
 # ---------------------------------------------------------------------------
