@@ -725,6 +725,17 @@ $miStats = New-StripItem 'Show stats panel' {
 $miStats.Checked = [bool]$script:Cfg.ShowStats
 [void]$script:ctxStrip.Items.Add($miStats)
 
+$miCompact = New-StripItem 'Compact mode' {
+    $script:Cfg.Compact = -not [bool]$script:Cfg.Compact
+    $miCompact.Checked = [bool]$script:Cfg.Compact
+    Apply-UnifiedSettings
+    Update-AllSections
+    Resize-ToContent
+    Save-UnifiedState
+}
+$miCompact.Checked = [bool]$script:Cfg.Compact
+[void]$script:ctxStrip.Items.Add($miCompact)
+
 $miAlerts = New-StripItem 'Threshold alerts' {
     $script:Cfg.ShowAlerts = -not [bool]$script:Cfg.ShowAlerts
     $miAlerts.Checked = [bool]$script:Cfg.ShowAlerts

@@ -6,6 +6,7 @@
 $script:PollSeconds    = 180
 $script:TickSeconds    = 30
 $script:BarTrackWidth  = 250.0
+$script:CompactBarWidth = 150.0
 $script:WarnPct        = 80
 $script:CritPct        = 95
 $script:WorkdayStartHour = 8
@@ -313,6 +314,29 @@ $script:Themes = [ordered]@{
         Stripe      = '#FF9E80','#EB6F92','#C4A7E7','#F6C177'
     }
 }
+
+# Cursor bar color per theme. Cursor's bar is painted at refresh time (not via the
+# shared bar loop), so without this it stayed green in every theme. Kept distinct
+# from that theme's Claude/Codex hues for variety.
+$script:CursorPalette = [ordered]@{
+    'Deep Space'    = @('#4338CA','#818CF8')
+    'Global Shop'   = @('#3F6212','#A3E635')
+    'Ocean'         = @('#0E7490','#22D3EE')
+    'Mono'          = @('#475569','#94A3B8')
+    'Black & White' = @('#6B7280','#E5E7EB')
+    'Catppuccin'    = @('#40A02B','#A6E3A1')
+    'Synthwave'     = @('#0A8F5A','#3DF5A0')
+    'Nord'          = @('#5E7A4E','#A3BE8C')
+    'Dracula'       = @('#1F8A4C','#50FA7B')
+    'Rose Sunset'   = @('#4D7C0F','#BEF264')
+}
+foreach ($k in $script:CursorPalette.Keys) {
+    if ($script:Themes.Contains($k)) {
+        $script:Themes[$k].CursorColors = $script:CursorPalette[$k]
+        $script:Themes[$k].CursorFg     = $script:CursorPalette[$k][1]
+    }
+}
+$script:CursorColorsCur = @('#065F46','#34D399')
 
 # ---------------------------------------------------------------------------
 # Default config

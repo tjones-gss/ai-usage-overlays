@@ -82,17 +82,21 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="claudeChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CLAUDE" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="claudeHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
           <StackPanel x:Name="claudeBody">
+
+           <StackPanel x:Name="claudeFull">
 
             <!-- 5h metric -->
             <StackPanel Margin="0,0,0,10">
@@ -256,6 +260,58 @@ $xaml = @'
                 <TextBlock Grid.Column="1" x:Name="lifeText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
               </Grid>
             </StackPanel>
+           </StackPanel>
+           <!-- ===== CLAUDE compact (single-line) ===== -->
+           <StackPanel x:Name="claudeCompact" Visibility="Collapsed">
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="fivehLabelC" Text="5-HOUR" Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="fivehBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#0369A1" Offset="0"/><GradientStop Color="#38BDF8" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="fivehPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="weekLabelC" Text="WEEKLY" Foreground="#FB923C" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="weekBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#C2410C" Offset="0"/><GradientStop Color="#FB923C" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="weekPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="fabLabelC" Text="FABLE" Foreground="#C084FC" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="fabBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#6D28D9" Offset="0"/><GradientStop Color="#C084FC" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="fabPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <Grid x:Name="opusRowC" Margin="0,0,0,7" Visibility="Collapsed">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="opusLabelC" Text="OPUS" Foreground="#FDE047" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="opusBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#92400E" Offset="0"/><GradientStop Color="#FDE047" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="opusPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+           </StackPanel>
           </StackPanel>
         </StackPanel>
 
@@ -265,17 +321,20 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="codexChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CODEX" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="codexHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
           <StackPanel x:Name="codexBody">
+           <StackPanel x:Name="codexFull">
             <!-- Weekly metric (Codex now exposes a single weekly limit) -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,3">
@@ -338,6 +397,22 @@ $xaml = @'
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexSessText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
             </Grid>
+           </StackPanel>
+           <!-- ===== CODEX compact (single-line) ===== -->
+           <StackPanel x:Name="codexCompact" Visibility="Collapsed">
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="codexWeekLabelC" Text="WEEKLY" Foreground="#FB923C" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="codexWeekBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#C2410C" Offset="0"/><GradientStop Color="#FB923C" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="codexWeekPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+           </StackPanel>
           </StackPanel>
         </StackPanel>
 
@@ -347,17 +422,20 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="cursorChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CURSOR" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="cursorHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
           <StackPanel x:Name="cursorBody">
+           <StackPanel x:Name="cursorFull">
 
             <!-- ON-DEMAND HERO -->
             <StackPanel Margin="0,0,0,10">
@@ -427,6 +505,22 @@ $xaml = @'
                          Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock x:Name="cursorSessText" Grid.Column="1" Text="--" Foreground="#94A3B8" FontSize="14" FontFamily="Consolas"/>
             </Grid>
+           </StackPanel>
+           <!-- ===== CURSOR compact (single-line) ===== -->
+           <StackPanel x:Name="cursorCompact" Visibility="Collapsed">
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="58"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="reqLabelC" Text="REQS" Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#0E2018" Width="150" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="reqBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#065F46" Offset="0"/><GradientStop Color="#34D399" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="reqCountC" Text="--" Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+           </StackPanel>
           </StackPanel>
         </StackPanel>
 
@@ -471,6 +565,10 @@ $xaml = @'
 function Set-BarWidth($b, [double]$target) {
     if (-not $b) { return }
     $wp  = [System.Windows.FrameworkElement]::WidthProperty
+    # Hidden bars (collapsed section, or the inactive full/compact layout) skip the
+    # tween: their ActualWidth is 0, so every refresh would re-animate 0->target for
+    # nothing. Set the value directly so it's correct the moment they become visible.
+    if (-not $b.IsVisible) { $b.BeginAnimation($wp, $null); $b.Width = $target; return }
     $cur = $b.ActualWidth
     if ([double]::IsNaN($cur) -or $cur -lt 0) { $cur = 0 }
     $b.BeginAnimation($wp, $null)
@@ -509,6 +607,26 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
     $p.Foreground = NewBrush $fg
     if ($sb) { $sb.Text = if ($u -ge $script:CritPct) { 'critical!' } elseif ($u -ge $script:WarnPct) { 'high' } else { 'used' } }
     if ($r)  { $r.Text  = Format-Reset $resetsAt }
+}
+
+# ---------------------------------------------------------------------------
+# Set-CompactBar - single-line compact row: fills the narrow bar and sets the %
+# text (same warn/crit foreground as the full view). Safe no-op until the
+# compact XAML exists (FindName returns null for missing elements).
+# ---------------------------------------------------------------------------
+function Set-CompactBar([string]$bar, [string]$pct, $util) {
+    $b = $script:window.FindName($bar)
+    $p = $script:window.FindName($pct)
+    if (-not $b -or -not $p) { return }
+    if ($null -eq $util) {
+        Set-BarWidth $b 0; $p.Text = '--'; $p.Foreground = NewBrush '#F1F5F9'
+        return
+    }
+    $u = [double]$util
+    Set-BarWidth $b ([math]::Max(0, [math]::Min($script:CompactBarWidth, [math]::Round($u / 100.0 * $script:CompactBarWidth))))
+    $p.Text = ('{0:0}%' -f $u)
+    $fg = if ($u -ge $script:CritPct) { '#F87171' } elseif ($u -ge $script:WarnPct) { '#FBBF24' } else { '#F1F5F9' }
+    $p.Foreground = NewBrush $fg
 }
 
 # ---------------------------------------------------------------------------
@@ -569,11 +687,11 @@ function Apply-UnifiedTheme([string]$name) {
     }
 
     # Claude/Codex bars/labels/subs
-    $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar')
-    $labels = @('fivehLabel','weekLabel','fabLabel','opusLabel','codexWeekLabel')
-    $subs   = @('fivehSub','weekSub','fabSub','opusSub','codexWeekSub')
-    $fgKeys = @('FivehFg','WeekFg','FabFg','OpusFg','WeekFg')
-    $bgKeys = @('FivehColors','WeekColors','FabColors','OpusColors','WeekColors')
+    $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar','fivehBarC','weekBarC','fabBarC','opusBarC','codexWeekBarC')
+    $labels = @('fivehLabel','weekLabel','fabLabel','opusLabel','codexWeekLabel','fivehLabelC','weekLabelC','fabLabelC','opusLabelC','codexWeekLabelC')
+    $subs   = @('fivehSub','weekSub','fabSub','opusSub','codexWeekSub','','','','','')
+    $fgKeys = @('FivehFg','WeekFg','FabFg','OpusFg','WeekFg','FivehFg','WeekFg','FabFg','OpusFg','WeekFg')
+    $bgKeys = @('FivehColors','WeekColors','FabColors','OpusColors','WeekColors','FivehColors','WeekColors','FabColors','OpusColors','WeekColors')
     for ($i = 0; $i -lt $bars.Count; $i++) {
         $b = $script:window.FindName($bars[$i])
         if ($b -and $t[$bgKeys[$i]]) { $b.Background = New-GradientBrush $t[$bgKeys[$i]][0] $t[$bgKeys[$i]][1] }
@@ -583,11 +701,19 @@ function Apply-UnifiedTheme([string]$name) {
         if ($s -and $t[$fgKeys[$i]]) { $s.Foreground = NewBrush ($t[$fgKeys[$i]] + '55') }
     }
 
-    # Cursor bar/label (reuse Fiveh palette)
-    $rb = $script:window.FindName('reqBar')
-    if ($rb -and $t.FivehColors) { $rb.Background = New-GradientBrush $t.FivehColors[0] $t.FivehColors[1] }
-    $rl = $script:window.FindName('reqLabel')
-    if ($rl -and $t.FivehFg) { $rl.Foreground = NewBrush $t.FivehFg }
+    # Cursor bar/label (per-theme CursorColors; the bar is repainted every refresh in
+    # Update-CursorSection, so we stash the theme colors for it to reuse).
+    $cc  = if ($t.CursorColors) { $t.CursorColors } elseif ($t.FivehColors) { $t.FivehColors } else { @('#065F46','#34D399') }
+    $cfg = if ($t.CursorFg)     { $t.CursorFg }     elseif ($t.FivehFg)     { $t.FivehFg }     else { '#34D399' }
+    $script:CursorColorsCur = $cc
+    foreach ($bn in @('reqBar','reqBarC')) {
+        $rb = $script:window.FindName($bn)
+        if ($rb) { $rb.Background = New-GradientBrush $cc[0] $cc[1] }
+    }
+    foreach ($ln in @('reqLabel','reqLabelC')) {
+        $rl = $script:window.FindName($ln)
+        if ($rl) { $rl.Foreground = NewBrush $cfg }
+    }
 
     # Sparkline strokes
     $fivehSpark = $script:window.FindName('fivehSpark')
@@ -772,28 +898,40 @@ function Update-ClaudeSection {
         Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $null $null
         Set-SectionBar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $null $null
         Set-SectionBar 'fabBar'   'fabPct'   'fabSub'   'fabReset'   $null $null
+        Set-CompactBar 'fivehBarC' 'fivehPctC' $null
+        Set-CompactBar 'weekBarC'  'weekPctC'  $null
+        Set-CompactBar 'fabBarC'   'fabPctC'   $null
+        $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = '' }
         return
     }
 
     $hasAlert = [bool](Get-Command Check-Alert -ErrorAction SilentlyContinue)
 
+    $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = Format-Reset $d.five_hour.resets_at }
+
     Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at
+    Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization
     Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour'
     if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
     Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at
+    Set-CompactBar 'weekBarC' 'weekPctC' $d.seven_day.utilization
     Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
     Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at
+    Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization
     if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible
+        $oc = $script:window.FindName('opusRowC'); if ($oc) { $oc.Visibility = [System.Windows.Visibility]::Visible }
         Set-SectionBar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at
+        Set-CompactBar 'opusBarC' 'opusPctC' $d.seven_day_opus.utilization
         if ($hasAlert) { Check-Alert 'seven_day_opus' $d.seven_day_opus.utilization }
     } else {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Collapsed
+        $oc = $script:window.FindName('opusRowC'); if ($oc) { $oc.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
     $ex = $d.extra_usage
@@ -815,15 +953,19 @@ function Update-CodexSection {
     $s = $script:CodexStats
     if (-not $s) {
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
+        Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $null
         $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
         $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
         $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
         $ca = $script:window.FindName('codexAfterHoursText'); if ($ca) { $ca.Text = '--' }
         $cs = $script:window.FindName('codexSessText'); if ($cs) { $cs.Text = '--' }
+        $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = '' }
         return
     }
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
+    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $s.WeekPct
+    $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $s.WeekResetsAt }
     $codexResetsText = $script:window.FindName('codexResetsText')
     if ($codexResetsText) {
         if ($null -ne $s.ResetsAvailable) {
@@ -855,22 +997,30 @@ function Update-CursorSection {
 
         $bar = $script:window.FindName('reqBar')
         Set-BarWidth $bar ([math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth)))
+        $barC = $script:window.FindName('reqBarC')
+        Set-BarWidth $barC ([math]::Min($script:CompactBarWidth, [math]::Round($pct / 100.0 * $script:CompactBarWidth)))
 
         $pill = $script:window.FindName('overPill')
         if ($over) {
             $bar.Background = New-GradientBrush '#78350F' '#FBBF24'
+            if ($barC) { $barC.Background = New-GradientBrush '#78350F' '#FBBF24' }
             if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
         } else {
-            $bar.Background = New-GradientBrush '#065F46' '#34D399'
+            $cc = if ($script:CursorColorsCur) { $script:CursorColorsCur } else { @('#065F46','#34D399') }
+            $bar.Background = New-GradientBrush $cc[0] $cc[1]
+            if ($barC) { $barC.Background = New-GradientBrush $cc[0] $cc[1] }
             if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         }
 
         $script:window.FindName('reqCount').Text = "$used / $limit"
+        $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = "$used / $limit" }
         # billingCycleEnd is the real reset; startOfMonth is the cycle START (past) so it formats as "now"
         $script:window.FindName('reqReset').Text = Format-Reset $script:SummaryData.billingCycleEnd
     } else {
         Set-BarWidth ($script:window.FindName('reqBar')) 0
+        Set-BarWidth ($script:window.FindName('reqBarC')) 0
         $script:window.FindName('reqCount').Text = '-- / --'
+        $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = '-- / --' }
         $pill = $script:window.FindName('overPill')
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
     }
@@ -909,6 +1059,25 @@ function Update-CursorSection {
             $script:window.FindName('cursorModelText').Text = '--'
         }
         $script:window.FindName('cursorSessText').Text  = ('{0} lines' -f (Fmt-Num $l.linesAccepted))
+    }
+
+    # Compact header detail: on-demand cost takes over (amber) the moment Cursor
+    # reports any on-demand spend - that's the number you want when you're paying.
+    # Below that threshold it shows the billing-cycle reset instead.
+    $uhd = $script:window.FindName('cursorHeaderDetail')
+    if ($uhd) {
+        $sum = $script:SummaryData
+        $odDollars = 0.0
+        if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
+            $odDollars = [double]$sum.individualUsage.onDemand.used / 100.0
+        }
+        if ($odDollars -gt 0) {
+            $uhd.Text = ('${0:N2}' -f $odDollars); $uhd.Foreground = NewBrush '#FBBF24'
+        } elseif ($sum -and $sum.billingCycleEnd) {
+            $uhd.Text = Format-Reset $sum.billingCycleEnd; $uhd.Foreground = NewBrush '#7B9EC4'
+        } else {
+            $uhd.Text = ''
+        }
     }
 }
 
