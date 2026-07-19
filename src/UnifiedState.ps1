@@ -10,6 +10,7 @@ $script:UnifiedCfgDefaults = @{
     Opacity     = 1.0
     StartHidden = $false
     ShowStats   = $true
+    Compact     = $false
     Theme       = 'Deep Space'
     ShowAlerts  = $true
     ShowGraph   = $false
@@ -69,7 +70,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
@@ -108,6 +109,15 @@ function Apply-UnifiedSettings {
         $sparkRow = $script:window.FindName('sparkRow')
         if ($sparkRow) {
             $sparkRow.Visibility = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        }
+
+        # Compact mode: swap each section's Full body for its single-line Compact body.
+        $compact = [bool]$script:Cfg.Compact
+        $vFull = if ($compact) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+        $vComp = if ($compact) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        foreach ($sec in $script:UnifiedSectionKeys) {
+            $full = $script:window.FindName($sec + 'Full');    if ($full) { $full.Visibility = $vFull }
+            $comp = $script:window.FindName($sec + 'Compact'); if ($comp) { $comp.Visibility = $vComp }
         }
     }
 
