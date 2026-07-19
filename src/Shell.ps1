@@ -82,13 +82,15 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="claudeChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CLAUDE" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="claudeHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
@@ -319,13 +321,15 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="codexChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CODEX" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="codexHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
@@ -418,13 +422,15 @@ $xaml = @'
                   Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="cursorChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBlock Grid.Column="1" Text="CURSOR" Foreground="#E2E8F0"
                          FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="cursorHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
           </Border>
 
@@ -695,11 +701,19 @@ function Apply-UnifiedTheme([string]$name) {
         if ($s -and $t[$fgKeys[$i]]) { $s.Foreground = NewBrush ($t[$fgKeys[$i]] + '55') }
     }
 
-    # Cursor bar/label (reuse Fiveh palette)
-    $rb = $script:window.FindName('reqBar')
-    if ($rb -and $t.FivehColors) { $rb.Background = New-GradientBrush $t.FivehColors[0] $t.FivehColors[1] }
-    $rl = $script:window.FindName('reqLabel')
-    if ($rl -and $t.FivehFg) { $rl.Foreground = NewBrush $t.FivehFg }
+    # Cursor bar/label (per-theme CursorColors; the bar is repainted every refresh in
+    # Update-CursorSection, so we stash the theme colors for it to reuse).
+    $cc  = if ($t.CursorColors) { $t.CursorColors } elseif ($t.FivehColors) { $t.FivehColors } else { @('#065F46','#34D399') }
+    $cfg = if ($t.CursorFg)     { $t.CursorFg }     elseif ($t.FivehFg)     { $t.FivehFg }     else { '#34D399' }
+    $script:CursorColorsCur = $cc
+    foreach ($bn in @('reqBar','reqBarC')) {
+        $rb = $script:window.FindName($bn)
+        if ($rb) { $rb.Background = New-GradientBrush $cc[0] $cc[1] }
+    }
+    foreach ($ln in @('reqLabel','reqLabelC')) {
+        $rl = $script:window.FindName($ln)
+        if ($rl) { $rl.Foreground = NewBrush $cfg }
+    }
 
     # Sparkline strokes
     $fivehSpark = $script:window.FindName('fivehSpark')
@@ -887,10 +901,13 @@ function Update-ClaudeSection {
         Set-CompactBar 'fivehBarC' 'fivehPctC' $null
         Set-CompactBar 'weekBarC'  'weekPctC'  $null
         Set-CompactBar 'fabBarC'   'fabPctC'   $null
+        $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = '' }
         return
     }
 
     $hasAlert = [bool](Get-Command Check-Alert -ErrorAction SilentlyContinue)
+
+    $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = Format-Reset $d.five_hour.resets_at }
 
     Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at
     Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization
@@ -943,10 +960,12 @@ function Update-CodexSection {
         $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
         $ca = $script:window.FindName('codexAfterHoursText'); if ($ca) { $ca.Text = '--' }
         $cs = $script:window.FindName('codexSessText'); if ($cs) { $cs.Text = '--' }
+        $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = '' }
         return
     }
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
     Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $s.WeekPct
+    $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $s.WeekResetsAt }
     $codexResetsText = $script:window.FindName('codexResetsText')
     if ($codexResetsText) {
         if ($null -ne $s.ResetsAvailable) {
@@ -987,8 +1006,9 @@ function Update-CursorSection {
             if ($barC) { $barC.Background = New-GradientBrush '#78350F' '#FBBF24' }
             if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
         } else {
-            $bar.Background = New-GradientBrush '#065F46' '#34D399'
-            if ($barC) { $barC.Background = New-GradientBrush '#065F46' '#34D399' }
+            $cc = if ($script:CursorColorsCur) { $script:CursorColorsCur } else { @('#065F46','#34D399') }
+            $bar.Background = New-GradientBrush $cc[0] $cc[1]
+            if ($barC) { $barC.Background = New-GradientBrush $cc[0] $cc[1] }
             if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
         }
 
@@ -1039,6 +1059,25 @@ function Update-CursorSection {
             $script:window.FindName('cursorModelText').Text = '--'
         }
         $script:window.FindName('cursorSessText').Text  = ('{0} lines' -f (Fmt-Num $l.linesAccepted))
+    }
+
+    # Compact header detail: on-demand cost takes over (amber) the moment Cursor
+    # reports any on-demand spend - that's the number you want when you're paying.
+    # Below that threshold it shows the billing-cycle reset instead.
+    $uhd = $script:window.FindName('cursorHeaderDetail')
+    if ($uhd) {
+        $sum = $script:SummaryData
+        $odDollars = 0.0
+        if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
+            $odDollars = [double]$sum.individualUsage.onDemand.used / 100.0
+        }
+        if ($odDollars -gt 0) {
+            $uhd.Text = ('${0:N2}' -f $odDollars); $uhd.Foreground = NewBrush '#FBBF24'
+        } elseif ($sum -and $sum.billingCycleEnd) {
+            $uhd.Text = Format-Reset $sum.billingCycleEnd; $uhd.Foreground = NewBrush '#7B9EC4'
+        } else {
+            $uhd.Text = ''
+        }
     }
 }
 

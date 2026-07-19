@@ -118,6 +118,7 @@ function Apply-UnifiedSettings {
         foreach ($sec in $script:UnifiedSectionKeys) {
             $full = $script:window.FindName($sec + 'Full');    if ($full) { $full.Visibility = $vFull }
             $comp = $script:window.FindName($sec + 'Compact'); if ($comp) { $comp.Visibility = $vComp }
+            $hd   = $script:window.FindName($sec + 'HeaderDetail'); if ($hd) { $hd.Visibility = $vComp }
         }
     }
 
