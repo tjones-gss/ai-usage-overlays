@@ -58,7 +58,16 @@ function Save-UnifiedState {
             $script:Cfg.Left = $script:window.Left
             $script:Cfg.Top  = $script:window.Top
         }
-        $script:Cfg | ConvertTo-Json -Depth 6 | Set-Content -Path $script:StatePath -Encoding UTF8
+        # Windows PowerShell 5.1 serializes [datetime] as a DisplayHint blob carrying
+        # both 'value' and 'Value' keys, and its own ConvertFrom-Json then refuses the
+        # whole file as having duplicate keys. Persist timestamps as strings instead.
+        $out = @{}
+        foreach ($key in $script:Cfg.Keys) {
+            $val = $script:Cfg[$key]
+            if ($val -is [datetime]) { $val = $val.ToString('o') }
+            $out[$key] = $val
+        }
+        $out | ConvertTo-Json -Depth 6 | Set-Content -Path $script:StatePath -Encoding UTF8
     } catch {
         try { Write-Log "Save-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
@@ -86,6 +95,15 @@ function Load-UnifiedState {
                 Import-AlertStateFromConfig
             }
         }
+        if ($script:Cfg['LastUpdateCheckAt'] -is [string]) {
+            try {
+                $script:Cfg['LastUpdateCheckAt'] = [datetime]::Parse(
+                    $script:Cfg['LastUpdateCheckAt'],
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind)
+            } catch { $script:Cfg['LastUpdateCheckAt'] = $null }
+        }
+
         Initialize-UnifiedCfg
         if ($script:UpdateState -and $script:Cfg.LastUpdateCheckAt) {
             $script:UpdateState.CheckedAt = $script:Cfg.LastUpdateCheckAt
