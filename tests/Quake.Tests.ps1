@@ -31,6 +31,7 @@ Describe 'Quake extra usage' {
 
 Describe 'Quake monitor selection' {
     BeforeAll {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
         $root = Split-Path $PSScriptRoot -Parent
         function Write-Log { param([string]$Message) }
         . (Join-Path $root 'src\Dropdown.ps1')
@@ -91,6 +92,7 @@ Describe 'Quake pinned geometry persistence' {
 }
 Describe 'Dropdown assembly references' {
     BeforeAll {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
         $root = Split-Path $PSScriptRoot -Parent
         . (Join-Path $root 'src\Dropdown.ps1')
     }
