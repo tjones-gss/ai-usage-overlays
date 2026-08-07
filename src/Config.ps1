@@ -6,12 +6,155 @@
 $script:PollSeconds    = 180
 $script:TickSeconds    = 30
 $script:BarTrackWidth  = 250.0
+$script:CompactBarWidth = 120.0
 $script:WarnPct        = 80
 $script:CritPct        = 95
-$script:AppVersion     = '0.2.3'
+$script:WorkdayStartHour = 8
+$script:WorkdayEndHour   = 18
+$script:AppVersion     = '0.3.0'
 $script:RepoOwner      = 'tjones-gss'
 $script:RepoName       = 'ai-usage-overlays'
 $script:UpdateChannel  = 'release'
+
+# WSL can contain the current Codex and Claude state even when the overlay runs
+# in Windows. Discovery is cached because every poll process can ask for it more
+# than once, and no WSL problem may interrupt the poll.
+#
+# We do NOT read WSL data directly via the \\wsl.localhost\<distro> UNC path:
+# that UNC is unreliable from background processes (Test-Path returns False
+# even while the distro is running), so the feature would silently no-op.
+# Instead we shell into wsl.exe and have the distro itself copy (cp -u, so
+# it is a cheap incremental sync) its .claude/.codex state into a local
+# Windows mirror directory under $script:AppDir, then treat that mirror as
+# a home root. wsl.exe interop and WSL-side writes to /mnt/c always work.
+$script:WslHomeRootsCache = $null
+
+function Get-WslHomeRoots {
+    if ($null -ne $script:WslHomeRootsCache) {
+        return @($script:WslHomeRootsCache)
+    }
+
+    if (-not $script:AppDir) {
+        $script:WslHomeRootsCache = @()
+        return @()
+    }
+
+    $mirrorBase = Join-Path $script:AppDir 'wsl-mirror'
+    $marker = Join-Path $mirrorBase '.last-sync'
+    $roots = [System.Collections.Generic.List[string]]::new()
+
+    try {
+        # Stampede guard: multiple background poll jobs can call this
+        # concurrently. Only pay for the WSL sync once per 60 seconds;
+        # everyone else just reads whatever is already in the mirror.
+        $needsSync = $true
+        try {
+            if (Test-Path -LiteralPath $marker -PathType Leaf -ErrorAction SilentlyContinue) {
+                $markerItem = Get-Item -LiteralPath $marker -ErrorAction Stop
+                $ageSeconds = ((Get-Date).ToUniversalTime() - $markerItem.LastWriteTimeUtc).TotalSeconds
+                if ($ageSeconds -lt 60) {
+                    $needsSync = $false
+                }
+            }
+        } catch { }
+
+        if ($needsSync) {
+            $process = $null
+            try {
+                $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+                if ($wsl) {
+                    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+                    $startInfo.FileName = $wsl.Source
+                    $startInfo.Arguments = '--list --quiet'
+                    $startInfo.UseShellExecute = $false
+                    $startInfo.CreateNoWindow = $true
+                    $startInfo.RedirectStandardOutput = $true
+                    $startInfo.RedirectStandardError = $true
+                    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::Unicode
+
+                    $process = [System.Diagnostics.Process]::new()
+                    $process.StartInfo = $startInfo
+                    $distros = @()
+                    if ($process.Start() -and $process.WaitForExit(1500)) {
+                        $distroOutput = $process.StandardOutput.ReadToEnd()
+                        $distros = @($distroOutput -split "`n") | ForEach-Object {
+                            ([string]$_).Replace([string][char]0, '').Trim()
+                        } | Where-Object { $_ -and $_ -notmatch '^docker' }
+                    } else {
+                        if ($process -and -not $process.HasExited) {
+                            try { $process.Kill() } catch { }
+                        }
+                    }
+                    if ($process) { $process.Dispose() }
+                    $process = $null
+
+                    if ($distros.Count -gt 0) {
+                        try { [void](New-Item -ItemType Directory -Force -Path $mirrorBase -ErrorAction Stop) } catch { }
+
+                        $mirrorEscaped = $mirrorBase.Replace("'", "'\''")
+                        $syncScriptTemplate = 'MB=$(wslpath -u ''{0}''); for h in /home/*; do u=$(basename \"$h\"); if [ -d \"$h/.claude\" ] || [ -d \"$h/.codex\" ]; then d=\"$MB/{1}/$u\"; mkdir -p \"$d/.claude\" \"$d/.codex\"; cp -u --preserve=timestamps \"$h/.claude/.credentials.json\" \"$d/.claude/\" 2>/dev/null; cp -u -r --preserve=timestamps \"$h/.claude/projects\" \"$d/.claude/\" 2>/dev/null; cp -u -r --preserve=timestamps \"$h/.codex/sessions\" \"$d/.codex/\" 2>/dev/null; fi; done'
+
+                        foreach ($distro in $distros) {
+                            $syncScript = $syncScriptTemplate -f $mirrorEscaped, $distro
+                            $syncProcess = $null
+                            try {
+                                $syncStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+                                $syncStartInfo.FileName = $wsl.Source
+                                $syncStartInfo.Arguments = '-d ' + $distro + ' -e /bin/sh -c "' + $syncScript + '"'
+                                $syncStartInfo.UseShellExecute = $false
+                                $syncStartInfo.CreateNoWindow = $true
+                                $syncStartInfo.RedirectStandardOutput = $true
+                                $syncStartInfo.RedirectStandardError = $true
+
+                                $syncProcess = [System.Diagnostics.Process]::new()
+                                $syncProcess.StartInfo = $syncStartInfo
+                                if (-not $syncProcess.Start() -or -not $syncProcess.WaitForExit(45000)) {
+                                    if ($syncProcess -and -not $syncProcess.HasExited) {
+                                        try { $syncProcess.Kill() } catch { }
+                                    }
+                                    # Partial mirror is fine; cp -u resumes next poll.
+                                }
+                            } catch {
+                            } finally {
+                                if ($syncProcess) { $syncProcess.Dispose() }
+                            }
+                        }
+
+                        try {
+                            [void](New-Item -ItemType Directory -Force -Path $mirrorBase -ErrorAction Stop)
+                            Set-Content -LiteralPath $marker -Value ((Get-Date).ToUniversalTime().ToString('o')) -ErrorAction Stop
+                        } catch { }
+                    }
+                }
+            } catch {
+            } finally {
+                if ($process) { $process.Dispose() }
+            }
+        }
+
+        # Build the result from whatever is in the mirror, regardless of
+        # whether this call's own sync (if any) succeeded.
+        try {
+            if (Test-Path -LiteralPath $mirrorBase -PathType Container -ErrorAction SilentlyContinue) {
+                foreach ($distroDir in @(Get-ChildItem -LiteralPath $mirrorBase -Directory -ErrorAction SilentlyContinue)) {
+                    foreach ($userDir in @(Get-ChildItem -LiteralPath $distroDir.FullName -Directory -ErrorAction SilentlyContinue)) {
+                        $hasClaude = Test-Path -LiteralPath (Join-Path $userDir.FullName '.claude') -PathType Container -ErrorAction SilentlyContinue
+                        $hasCodex = Test-Path -LiteralPath (Join-Path $userDir.FullName '.codex') -PathType Container -ErrorAction SilentlyContinue
+                        if ($hasClaude -or $hasCodex) {
+                            [void]$roots.Add($userDir.FullName)
+                        }
+                    }
+                }
+            }
+        } catch { }
+
+        $script:WslHomeRootsCache = @($roots | Select-Object -Unique)
+        return @($script:WslHomeRootsCache)
+    } catch {
+        $script:WslHomeRootsCache = @()
+        return @()
+    }
+}
 
 if ($script:AppDir) {
     $script:AppVersionPath = Join-Path $script:AppDir 'app-version.txt'
@@ -110,7 +253,90 @@ $script:Themes = [ordered]@{
         OpusFg      = '#E8E8E8'
         Stripe      = '#E8E8E8','#B0B0B0','#7A7A7A','#4A4A4A'
     }
+    'Catppuccin' = @{
+        BgC1 = '#1E1E2E'; BgC2 = '#11111B'; BorderC1 = '#313244'; GssLabelFg = '#9399B2'
+        FivehColors = '#313E5F','#89B4FA'
+        WeekColors  = '#6E4A2E','#FAB387'
+        FabColors   = '#4B3A6B','#CBA6F7'
+        OpusColors  = '#6E5E2E','#F9E2AF'
+        FivehFg     = '#89B4FA'
+        WeekFg      = '#FAB387'
+        FabFg       = '#CBA6F7'
+        OpusFg      = '#F9E2AF'
+        Stripe      = '#89B4FA','#CBA6F7','#F5C2E7','#FAB387'
+    }
+    'Synthwave' = @{
+        BgC1 = '#241B2F'; BgC2 = '#0D0221'; BorderC1 = '#472066'; GssLabelFg = '#B383E0'
+        FivehColors = '#0E4F5C','#05D9E8'
+        WeekColors  = '#7A0F52','#FF6AC1'
+        FabColors   = '#4B1F8C','#B388FF'
+        OpusColors  = '#8A106B','#FE53BB'
+        FivehFg     = '#05D9E8'
+        WeekFg      = '#FF6AC1'
+        FabFg       = '#B388FF'
+        OpusFg      = '#FE53BB'
+        Stripe      = '#05D9E8','#B388FF','#FF6AC1','#FE53BB'
+    }
+    'Nord' = @{
+        BgC1 = '#2E3440'; BgC2 = '#242933'; BorderC1 = '#434C5E'; GssLabelFg = '#7B88A1'
+        FivehColors = '#3B4A5A','#88C0D0'
+        WeekColors  = '#6E4636','#D08770'
+        FabColors   = '#4C4257','#B48EAD'
+        OpusColors  = '#6E6142','#EBCB8B'
+        FivehFg     = '#88C0D0'
+        WeekFg      = '#D08770'
+        FabFg       = '#B48EAD'
+        OpusFg      = '#EBCB8B'
+        Stripe      = '#8FBCBB','#88C0D0','#81A1C1','#5E81AC'
+    }
+    'Dracula' = @{
+        BgC1 = '#282A36'; BgC2 = '#1A1B23'; BorderC1 = '#44475A'; GssLabelFg = '#6272A4'
+        FivehColors = '#1F5560','#8BE9FD'
+        WeekColors  = '#7A2F5C','#FF79C6'
+        FabColors   = '#4B3B7A','#BD93F9'
+        OpusColors  = '#5A6E2E','#F1FA8C'
+        FivehFg     = '#8BE9FD'
+        WeekFg      = '#FF79C6'
+        FabFg       = '#BD93F9'
+        OpusFg      = '#F1FA8C'
+        Stripe      = '#8BE9FD','#BD93F9','#FF79C6','#50FA7B'
+    }
+    'Rose Sunset' = @{
+        BgC1 = '#2A2436'; BgC2 = '#1C1622'; BorderC1 = '#504357'; GssLabelFg = '#C08497'
+        FivehColors = '#7A3A32','#FF9E80'
+        WeekColors  = '#7A5A1E','#F6C177'
+        FabColors   = '#7A2F52','#EB6F92'
+        OpusColors  = '#6E5A2E','#F2D5A0'
+        FivehFg     = '#FF9E80'
+        WeekFg      = '#F6C177'
+        FabFg       = '#EB6F92'
+        OpusFg      = '#F2D5A0'
+        Stripe      = '#FF9E80','#EB6F92','#C4A7E7','#F6C177'
+    }
 }
+
+# Cursor bar color per theme. Cursor's bar is painted at refresh time (not via the
+# shared bar loop), so without this it stayed green in every theme. Kept distinct
+# from that theme's Claude/Codex hues for variety.
+$script:CursorPalette = [ordered]@{
+    'Deep Space'    = @('#4338CA','#818CF8')
+    'Global Shop'   = @('#3F6212','#A3E635')
+    'Ocean'         = @('#0E7490','#22D3EE')
+    'Mono'          = @('#475569','#94A3B8')
+    'Black & White' = @('#6B7280','#E5E7EB')
+    'Catppuccin'    = @('#40A02B','#A6E3A1')
+    'Synthwave'     = @('#0A8F5A','#3DF5A0')
+    'Nord'          = @('#5E7A4E','#A3BE8C')
+    'Dracula'       = @('#1F8A4C','#50FA7B')
+    'Rose Sunset'   = @('#4D7C0F','#BEF264')
+}
+foreach ($k in $script:CursorPalette.Keys) {
+    if ($script:Themes.Contains($k)) {
+        $script:Themes[$k].CursorColors = $script:CursorPalette[$k]
+        $script:Themes[$k].CursorFg     = $script:CursorPalette[$k][1]
+    }
+}
+$script:CursorColorsCur = @('#065F46','#34D399')
 
 # ---------------------------------------------------------------------------
 # Default config
@@ -125,5 +351,7 @@ $script:Cfg = @{
     ShowAlerts  = $true    # NEW: enable threshold balloon alerts
     ShowGraph   = $false   # NEW: show history sparkline (off by default to keep panel compact)
     AutoCheckUpdates = $true
+    LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
+    AlertState = @{}
 }

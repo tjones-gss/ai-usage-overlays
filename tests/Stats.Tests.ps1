@@ -18,6 +18,8 @@ Describe 'Measure-Stats' {
         $s.Sessions  | Should -Be 0
         $s.TodayMsg  | Should -Be 0
         $s.TodayTok  | Should -Be 0
+        $s.TodayAfterHoursMsg | Should -Be 0
+        $s.TodayAfterHoursTok | Should -Be 0
     }
 
     It 'sums all-time input and output tokens across multiple records' {
@@ -71,6 +73,22 @@ Describe 'Measure-Stats' {
         $s.TodayTok | Should -Be 0
     }
 
+    It 'tracks today after-hours usage separately' {
+        $today = [datetime]'2026-06-10'
+        $records = @(
+            @{ Model='claude-sonnet-4'; Date=[datetime]'2026-06-10T07:30:00'; In=100L; Out=50L; CacheW=0L; CacheR=0L; SessionId='s1'; Key='a' }
+            @{ Model='claude-sonnet-4'; Date=[datetime]'2026-06-10T12:00:00'; In=200L; Out=25L; CacheW=0L; CacheR=0L; SessionId='s2'; Key='b' }
+            @{ Model='claude-sonnet-4'; Date=[datetime]'2026-06-10T18:00:00'; In=300L; Out=75L; CacheW=0L; CacheR=0L; SessionId='s3'; Key='c' }
+        )
+
+        $s = Measure-Stats $records $today
+
+        $s.TodayMsg | Should -Be 3
+        $s.TodayTok | Should -Be 750
+        $s.TodayAfterHoursMsg | Should -Be 2
+        $s.TodayAfterHoursTok | Should -Be 525
+    }
+
     It 'includes cache tokens in cost but not in InTokens/OutTokens totals' {
         # Pricing uses cacheW + cacheR for cost; InTokens/OutTokens are the raw input/output counts only
         $records = @(
@@ -80,5 +98,15 @@ Describe 'Measure-Stats' {
         $s.InTokens  | Should -Be 0
         $s.OutTokens | Should -Be 0
         $s.ValueUSD  | Should -Be 18.75   # opus cacheWrite: $18.75/M
+    }
+}
+
+Describe 'Get-ClaudeProjectsDirCandidates' {
+    It 'includes projects directories from supplied WSL home roots' {
+        $wslHome = '\\wsl.localhost\Ubuntu\home\alice'
+
+        $dirs = Get-ClaudeProjectsDirCandidates -WslHomeRoots @($wslHome)
+
+        $dirs | Should -Contain '\\wsl.localhost\Ubuntu\home\alice\.claude\projects'
     }
 }

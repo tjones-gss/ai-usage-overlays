@@ -5,6 +5,7 @@ BeforeAll {
     $script:ErrLog = Join-Path $TestDrive 'overlay-test-errors.log'
     $script:CredPath = Join-Path $TestDrive '.credentials.json'
     . (Join-Path $root 'src\Config.ps1')
+    function Get-WslHomeRoots { return @() }
     . (Join-Path $root 'src\Data.ps1')
 }
 
@@ -31,46 +32,39 @@ Describe 'ConvertTo-ClaudeIdentity' {
     }
 }
 
-Describe 'Get-ClaudeDataRoots' {
-    It 'prefers the Windows Claude home and discovers WSL user homes' {
-        $windowsHome = Join-Path $TestDrive 'WindowsUser'
-        $wslRoot = Join-Path $TestDrive 'wsl.localhost'
-        $windowsClaude = Join-Path $windowsHome '.claude'
-        $wslClaude = Join-Path $wslRoot 'Ubuntu\home\dev\.claude'
-        New-Item -ItemType Directory -Path $windowsClaude, $wslClaude -Force | Out-Null
+Describe 'Select-ClaudeCredential' {
+    It 'prefers an unexpired credential over an expired credential' {
+        $expiredPath = Join-Path $TestDrive 'expired-credentials.json'
+        $validPath = Join-Path $TestDrive 'valid-credentials.json'
+        $expiredAt = [System.DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
+        $validAt = [System.DateTimeOffset]::UtcNow.AddMinutes(30).ToUnixTimeMilliseconds()
 
-        $roots = @(Get-ClaudeDataRoots -WindowsHome $windowsHome -WslHostRoot $wslRoot -WslDistros 'Ubuntu')
+        @{ claudeAiOauth = @{ accessToken = 'expired-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $expiredPath -Encoding UTF8
+        @{ claudeAiOauth = @{ accessToken = 'valid-token'; expiresAt = $validAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $validPath -Encoding UTF8
 
-        $roots | Should -Be @($windowsClaude, $wslClaude)
+        Select-ClaudeCredential @($expiredPath, $validPath) | Should -Be 'valid-token'
     }
 
-    It 'uses a WSL credentials file when no explicit Windows credentials file exists' {
-        $script:CredPath = Join-Path $TestDrive 'missing\.credentials.json'
-        $wslClaude = Join-Path $TestDrive 'Ubuntu\home\dev\.claude'
-        New-Item -ItemType Directory -Path $wslClaude -Force | Out-Null
-        Set-Content -Path (Join-Path $wslClaude '.credentials.json') -Value '{"claudeAiOauth":{"accessToken":"wsl-token"}}'
+    It 'uses the newest credential file when every token is expired' {
+        $olderPath = Join-Path $TestDrive 'older-expired-credentials.json'
+        $newerPath = Join-Path $TestDrive 'newer-expired-credentials.json'
+        $expiredAt = [System.DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
 
-        Mock Get-ClaudeDataRoots { @($wslClaude) }
-        Resolve-ClaudeDataPaths
+        @{ claudeAiOauth = @{ accessToken = 'older-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $olderPath -Encoding UTF8
+        @{ claudeAiOauth = @{ accessToken = 'newer-token'; expiresAt = $expiredAt } } |
+            ConvertTo-Json -Depth 3 |
+            Set-Content -Path $newerPath -Encoding UTF8
 
-        $script:CredPath | Should -Be (Join-Path $wslClaude '.credentials.json')
-        $script:ClaudeProjectDirs | Should -Be @()
-    }
+        (Get-Item $olderPath).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-2)
+        (Get-Item $newerPath).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-1)
 
-    It 'prefers the last credential source that successfully fetched usage' {
-        $script:AppDir = Join-Path $TestDrive 'preference'
-        New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null
-        $windows = Join-Path $TestDrive 'windows.json'
-        $wsl = Join-Path $TestDrive 'wsl.json'
-        Set-Content $windows '{"claudeAiOauth":{"accessToken":"windows"}}'
-        Set-Content $wsl '{"claudeAiOauth":{"accessToken":"wsl"}}'
-        $script:CredPath = $windows
-        Save-PreferredClaudeCredentialPath $wsl
-        Mock Get-ClaudeDataRoots { @() }
-
-        Resolve-ClaudeDataPaths
-
-        $script:ClaudeCredentialPaths | Should -Be @($wsl, $windows)
+        Select-ClaudeCredential @($olderPath, $newerPath) | Should -Be 'newer-token'
     }
 }
 

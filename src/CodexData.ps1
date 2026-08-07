@@ -1,6 +1,8 @@
 # CodexData.ps1 - Codex session parsing and usage cost estimation
 
 function Get-CodexSessionDirCandidates {
+    param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
+
     $candidates = [System.Collections.Generic.List[string]]::new()
 
     foreach ($root in @($env:CODEX_HOME)) {
@@ -27,6 +29,14 @@ function Get-CodexSessionDirCandidates {
         }
     }
 
+    foreach ($root in @($WslHomeRoots)) {
+        if ($root) {
+            try {
+                [void]$candidates.Add((Join-Path $root '.codex\sessions'))
+            } catch { }
+        }
+    }
+
     return @($candidates | Select-Object -Unique)
 }
 
@@ -40,7 +50,7 @@ function Resolve-CodexSessionsDir {
     }
 
     foreach ($dir in @($candidates | Select-Object -Unique)) {
-        if ($dir -and (Test-Path $dir)) { return $dir }
+        if ($dir -and (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue)) { return $dir }
     }
 
     return @($candidates | Select-Object -First 1)
@@ -76,13 +86,22 @@ function Convert-CodexCacheRecords {
         $date = Convert-CodexCacheDate $r.Date
         if (-not $date) { continue }
 
+        $msgDates = @()
+        if ($r.MessageDates) {
+            foreach ($d in @($r.MessageDates)) {
+                $cd = Convert-CodexCacheDate $d
+                if ($cd) { $msgDates += $cd }
+            }
+        }
+
         $converted.Add(@{
-            Model     = [string]$r.Model
-            Date      = $date
-            In        = [long]$r.In
-            CachedIn  = [long]$r.CachedIn
-            Out       = [long]$r.Out
-            SessionId = [string]$r.SessionId
+            Model        = [string]$r.Model
+            Date         = $date
+            In           = [long]$r.In
+            CachedIn     = [long]$r.CachedIn
+            Out          = [long]$r.Out
+            SessionId    = [string]$r.SessionId
+            MessageDates = $msgDates
         })
     }
 
@@ -103,7 +122,7 @@ function Import-CodexStatsFileCache {
 
         foreach ($prop in $json.PSObject.Properties) {
             $entry = $prop.Value
-            if (-not $entry -or -not $entry.Stamp) { continue }
+            if (-not $entry -or -not $entry.Stamp -or $entry.CacheVersion -ne 2) { continue }
 
             $loaded[$prop.Name] = @{
                 Stamp         = [string]$entry.Stamp
@@ -167,6 +186,13 @@ function Convert-CodexEpochSeconds {
     }
 }
 
+function Test-CodexUsageAfterHours([datetime]$Date) {
+    $startHour = if ($null -ne $script:WorkdayStartHour) { [int]$script:WorkdayStartHour } else { 8 }
+    $endHour = if ($null -ne $script:WorkdayEndHour) { [int]$script:WorkdayEndHour } else { 18 }
+    if ($Date.DayOfWeek -in @([System.DayOfWeek]::Saturday, [System.DayOfWeek]::Sunday)) { return $true }
+    return ($Date.Hour -lt $startHour -or $Date.Hour -ge $endHour)
+}
+
 function Estimate-CodexCost([string]$model, $v) {
     if (-not $script:CodexPrices) { throw 'Estimate-CodexCost: $script:CodexPrices not loaded - dot-source Config.ps1 first.' }
 
@@ -203,7 +229,7 @@ function Estimate-CodexCost([string]$model, $v) {
 function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = $null) {
     $val = 0.0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
-    $msgCount = 0; $tMsg = 0; $tTok = 0L
+    $msgCount = 0; $tMsg = 0; $tTok = 0L; $afterHoursMsg = 0; $afterHoursTok = 0L
     $fiveHourPct = $null
     $fiveHourResetsAt = $null
     $weekPct = $null
@@ -230,11 +256,13 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         foreach ($messageDate in $messageDates) {
             if ($messageDate.Date -eq $today.Date) {
                 $tMsg++
+                if (Test-CodexUsageAfterHours $messageDate) { $afterHoursMsg++ }
             }
         }
 
         if ($r.Date.Date -eq $today.Date) {
             $tTok += [long]$r.In + [long]$r.Out
+            if (Test-CodexUsageAfterHours $r.Date) { $afterHoursTok += [long]$r.In + [long]$r.Out }
         }
 
         # Current model = the model of the most recent session that named one
@@ -246,24 +274,46 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
     }
 
     if ($rateLimits) {
-        $primary = $rateLimits.primary
-        if ($primary) {
-            if ($null -ne $primary.used_percent) {
-                $fiveHourPct = [double]$primary.used_percent
+        # Codex reports one or two rate-limit windows. Historically the short
+        # (5-hour) window was 'primary' and the weekly window was 'secondary',
+        # but newer Codex plans surface only the weekly limit and carry it in
+        # the 'primary' slot. Classify by window_minutes when present (weekly =
+        # the longest window) and fall back to the legacy slot convention when
+        # Codex omits the window metadata.
+        $fiveHour = $null
+        $weekly   = $null
+
+        $candidates = @()
+        if ($rateLimits.primary)   { $candidates += $rateLimits.primary }
+        if ($rateLimits.secondary) { $candidates += $rateLimits.secondary }
+
+        $withWindows = @($candidates | Where-Object {
+            ($null -ne $_.window_minutes) -and ($null -ne $_.used_percent)
+        })
+
+        if ($withWindows.Count -ge 2) {
+            $sorted   = @($withWindows | Sort-Object { [double]$_.window_minutes })
+            $fiveHour = $sorted[0]
+            $weekly   = $sorted[-1]
+        } elseif ($withWindows.Count -eq 1) {
+            # A single reported window: a day or longer is the weekly limit.
+            if ([double]$withWindows[0].window_minutes -ge 1440) {
+                $weekly = $withWindows[0]
+            } else {
+                $fiveHour = $withWindows[0]
             }
-            if ($null -ne $primary.resets_at) {
-                $fiveHourResetsAt = Convert-CodexEpochSeconds $primary.resets_at
-            }
+        } else {
+            $fiveHour = $rateLimits.primary
+            $weekly   = $rateLimits.secondary
         }
 
-        $secondary = $rateLimits.secondary
-        if ($secondary) {
-            if ($null -ne $secondary.used_percent) {
-                $weekPct = [double]$secondary.used_percent
-            }
-            if ($null -ne $secondary.resets_at) {
-                $weekResetsAt = Convert-CodexEpochSeconds $secondary.resets_at
-            }
+        if ($fiveHour) {
+            if ($null -ne $fiveHour.used_percent) { $fiveHourPct = [double]$fiveHour.used_percent }
+            if ($null -ne $fiveHour.resets_at)    { $fiveHourResetsAt = Convert-CodexEpochSeconds $fiveHour.resets_at }
+        }
+        if ($weekly) {
+            if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
+            if ($null -ne $weekly.resets_at)    { $weekResetsAt = Convert-CodexEpochSeconds $weekly.resets_at }
         }
     }
 
@@ -275,12 +325,120 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         Messages         = $msgCount
         TodayMsg         = $tMsg
         TodayTok         = $tTok
+        TodayAfterHoursMsg = $afterHoursMsg
+        TodayAfterHoursTok = $afterHoursTok
         FiveHourPct      = $fiveHourPct
         FiveHourResetsAt = $fiveHourResetsAt
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
+        ResetsAvailable  = $null
+        PlanType         = $null
         Model            = $currentModel
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+    }
+}
+
+# Parse the Codex live usage endpoint (chatgpt.com/backend-api/wham/usage)
+# response into overlay fields. Weekly = the longest limit window; the reset
+# credit count backs the "N resets available" line. Pure so it can be tested
+# without a network call.
+function ConvertFrom-CodexUsageResponse($obj) {
+    if (-not $obj) { return $null }
+
+    $weekPct = $null; $weekResetsAt = $null
+    $fiveHourPct = $null; $fiveHourResetsAt = $null
+
+    $rl = $obj.rate_limit
+    if ($rl) {
+        $windows = @()
+        if ($rl.primary_window)   { $windows += $rl.primary_window }
+        if ($rl.secondary_window) { $windows += $rl.secondary_window }
+
+        $withSecs = @($windows | Where-Object {
+            ($null -ne $_.limit_window_seconds) -and ($null -ne $_.used_percent)
+        })
+
+        $weekly = $null; $fiveHour = $null
+        if ($withSecs.Count -ge 2) {
+            $sorted   = @($withSecs | Sort-Object { [double]$_.limit_window_seconds })
+            $fiveHour = $sorted[0]
+            $weekly   = $sorted[-1]
+        } elseif ($withSecs.Count -eq 1) {
+            # A day or longer is the weekly window.
+            if ([double]$withSecs[0].limit_window_seconds -ge 86400) {
+                $weekly = $withSecs[0]
+            } else {
+                $fiveHour = $withSecs[0]
+            }
+        }
+
+        if ($weekly) {
+            if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
+            if ($null -ne $weekly.reset_at)     { $weekResetsAt = Convert-CodexEpochSeconds $weekly.reset_at }
+        }
+        if ($fiveHour) {
+            if ($null -ne $fiveHour.used_percent) { $fiveHourPct = [double]$fiveHour.used_percent }
+            if ($null -ne $fiveHour.reset_at)     { $fiveHourResetsAt = Convert-CodexEpochSeconds $fiveHour.reset_at }
+        }
+    }
+
+    $resetsAvailable = $null
+    if ($obj.rate_limit_reset_credits -and ($null -ne $obj.rate_limit_reset_credits.available_count)) {
+        $resetsAvailable = [int]$obj.rate_limit_reset_credits.available_count
+    }
+
+    return @{
+        WeekPct          = $weekPct
+        WeekResetsAt     = $weekResetsAt
+        FiveHourPct      = $fiveHourPct
+        FiveHourResetsAt = $fiveHourResetsAt
+        ResetsAvailable  = $resetsAvailable
+        PlanType         = $obj.plan_type
+    }
+}
+
+# Fetch live Codex usage from the ChatGPT backend using the local Codex OAuth
+# token. The new Codex no longer records rate limits in session logs, so this
+# authenticated call is the only source for the weekly bar and reset credits.
+# Returns $null on any failure (missing/expired token, network error) so the
+# overlay falls back to whatever it already has instead of breaking.
+function Get-CodexLiveUsage {
+    param([int]$TimeoutSec = 15)
+
+    $authPath = Join-Path $env:USERPROFILE '.codex\auth.json'
+    if (-not (Test-Path -LiteralPath $authPath)) { return $null }
+
+    try {
+        $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-CodexLog "Get-CodexLiveUsage: cannot read auth.json - $($_.Exception.Message)"
+        return $null
+    }
+
+    $token = $null
+    if ($auth.tokens -and $auth.tokens.access_token) { $token = $auth.tokens.access_token }
+    elseif ($auth.access_token) { $token = $auth.access_token }
+    if (-not $token) { return $null }
+
+    $acct = $auth.account_id
+    if (-not $acct -and $auth.tokens) { $acct = $auth.tokens.account_id }
+
+    $headers = @{
+        'Authorization' = "Bearer $token"
+        'originator'    = 'codex_cli_rs'
+        'User-Agent'    = 'codex_cli_rs/0.144.2 (ai-usage-overlay)'
+        'Accept'        = 'application/json'
+    }
+    if ($acct) { $headers['chatgpt-account-id'] = "$acct" }
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $resp = Invoke-RestMethod -Uri 'https://chatgpt.com/backend-api/wham/usage' `
+            -Headers $headers -Method GET -TimeoutSec $TimeoutSec
+        return ConvertFrom-CodexUsageResponse $resp
+    } catch {
+        Write-CodexLog "Get-CodexLiveUsage: request failed - $($_.Exception.Message)"
+        return $null
     }
 }
 
@@ -292,17 +450,36 @@ function Get-CodexStats {
         $script:CodexSessionsDir = $sessionsDir
     }
 
-    if (-not $script:CodexSessionsDir -or -not (Test-Path $script:CodexSessionsDir)) {
-        $candidateText = (Get-CodexSessionDirCandidates) -join '; '
+    $candidateDirs = [System.Collections.Generic.List[string]]::new()
+    if ($script:CodexSessionsDir) { [void]$candidateDirs.Add($script:CodexSessionsDir) }
+    foreach ($dir in Get-CodexSessionDirCandidates) {
+        if ($dir) { [void]$candidateDirs.Add($dir) }
+    }
+
+    $sessionDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($dir in @($candidateDirs | Select-Object -Unique)) {
+        try {
+            if (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue) {
+                [void]$sessionDirs.Add($dir)
+            }
+        } catch { }
+    }
+
+    if ($sessionDirs.Count -eq 0) {
+        $candidateText = (@($candidateDirs | Select-Object -Unique)) -join '; '
         Write-CodexLog "Get-CodexStats: Codex sessions directory not found - checked: $candidateText"
         return
     }
 
-    try {
-        $files = Get-ChildItem $script:CodexSessionsDir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop
-    } catch {
-        Write-CodexLog "Get-CodexStats: failed to enumerate sessions - $($_.Exception.Message)"
-        return
+    $files = [System.Collections.Generic.List[object]]::new()
+    foreach ($dir in $sessionDirs) {
+        try {
+            foreach ($file in @(Get-ChildItem -LiteralPath $dir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop)) {
+                [void]$files.Add($file)
+            }
+        } catch {
+            Write-CodexLog "Get-CodexStats: failed to enumerate sessions in $dir - $($_.Exception.Message)"
+        }
     }
 
     $allRecords = [System.Collections.Generic.List[object]]::new()
@@ -366,10 +543,6 @@ function Get-CodexStats {
                 if ($o.payload.model) {
                     $lastModel = [string]$o.payload.model
                 }
-                $turnDate = Convert-CodexTimestamp $o.timestamp
-                if ($turnDate) {
-                    [void]$messageDates.Add($turnDate)
-                }
             } elseif (($o.type -eq 'token_count') -or
                       (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'token_count'))) {
                 $usage = $o.payload.info.total_token_usage
@@ -385,6 +558,9 @@ function Get-CodexStats {
                         $lastTokenDate = $tokenDate
                     }
                 }
+            } elseif (($o.type -eq 'event_msg') -and ($o.payload.type -eq 'user_message')) {
+                $msgDate = Convert-CodexTimestamp $o.timestamp
+                if ($msgDate) { [void]$messageDates.Add($msgDate) }
             }
         }
 
@@ -431,6 +607,7 @@ function Get-CodexStats {
         }
 
         $activeCache[$file.FullName] = @{
+            CacheVersion  = 2
             Stamp         = $stamp
             Records       = $fileRecords
             LastTokenDate = $fileTokenDate
@@ -449,5 +626,25 @@ function Get-CodexStats {
         $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"
+    }
+
+    # The current Codex no longer persists rate limits to session logs, so the
+    # weekly bar and reset-credit count come from the live usage endpoint. Prefer
+    # live values when available; otherwise keep whatever the logs provided.
+    try {
+        $live = Get-CodexLiveUsage
+        if ($live) {
+            if (-not $script:CodexStats) {
+                $script:CodexStats = Measure-CodexStats @() (Get-Date)
+            }
+            if ($null -ne $live.WeekPct)          { $script:CodexStats.WeekPct = $live.WeekPct }
+            if ($null -ne $live.WeekResetsAt)     { $script:CodexStats.WeekResetsAt = $live.WeekResetsAt }
+            if ($null -ne $live.FiveHourPct)      { $script:CodexStats.FiveHourPct = $live.FiveHourPct }
+            if ($null -ne $live.FiveHourResetsAt) { $script:CodexStats.FiveHourResetsAt = $live.FiveHourResetsAt }
+            $script:CodexStats.ResetsAvailable = $live.ResetsAvailable
+            if ($live.PlanType) { $script:CodexStats.PlanType = $live.PlanType }
+        }
+    } catch {
+        Write-CodexLog "Get-CodexStats: live usage merge failed - $($_.Exception.Message)"
     }
 }

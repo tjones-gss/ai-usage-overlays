@@ -72,7 +72,7 @@ The PowerShell boundary should consume Rust through a narrow command invocation,
 
 ## Snapshot Contract
 
-Use a versioned top-level envelope. The first Rust-compatible version should be named `ai-usage.snapshot.v1` even if the PowerShell `-Json` output keeps extra fields during transition.
+Use a versioned top-level envelope. The first Rust-compatible version is named `ai-usage.snapshot.v1`, matching the PowerShell `unified-overlay.ps1 -Json` contract.
 
 ```json
 {
@@ -139,7 +139,10 @@ Field rules:
 
 - `schema` is required. PowerShell should reject unsupported major versions and fall back to native functions.
 - `generatedAt` uses ISO 8601 with offset.
+- Provider data lives under the top-level `providers` envelope.
+- PowerShell snapshot mode records requested providers and bounded network timeout values under `request`.
 - Provider `status` values are `ok`, `stale`, `auth`, `error`, or `unavailable`.
+- A provider excluded by selection is still present as `selected: false` with `status: "skipped"`.
 - Missing optional provider data should be `null` or an empty array, not a changed object shape.
 - Token counts and credits are integers. Money estimates are decimal numbers in USD.
 - `usedPercent` remains "used", matching the existing UI bar and alert behavior.
@@ -181,7 +184,7 @@ Stage 0: Contract alignment
 
 - Keep `unified-overlay.ps1 -Json` as the observed reference output.
 - Add a schema fixture once implementation begins.
-- Decide whether `-Json` should eventually emit the normalized `providers` envelope or continue to emit the current PowerShell-native object.
+- Preserve the normalized `providers` envelope and `schema: "ai-usage.snapshot.v1"` contract when replacing provider internals.
 
 Stage 1: Claude live usage/profile helper
 

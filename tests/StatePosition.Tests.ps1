@@ -68,6 +68,84 @@ Describe 'Unified state positioning' {
     }
 }
 
+Describe 'Off-screen recovery' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        $script:Cfg = @{}
+        . (Join-Path $root 'src\UnifiedState.ps1')
+        function Save-UnifiedState { }
+    }
+
+    BeforeEach {
+        $script:Positioned = $false
+        $script:window = [pscustomobject]@{
+            Left         = 100.0
+            Top          = 50.0
+            ActualWidth  = 300.0
+            ActualHeight = 400.0
+            Width        = [double]::NaN
+            Height       = [double]::NaN
+            RenderSize   = [pscustomobject]@{ Width = 300.0; Height = 400.0 }
+            DesiredSize  = [pscustomobject]@{ Width = 300.0; Height = 400.0 }
+        }
+        function Resize-ToContent { }
+    }
+
+    Context 'Test-RectOnAnyScreen geometry' {
+        BeforeEach {
+            $single = @( @{ Left = 0.0; Top = 0.0; Right = 3440.0; Bottom = 1392.0 } )
+        }
+
+        It 'accepts a rectangle fully inside a monitor' {
+            Test-RectOnAnyScreen -Left 100 -Top 50 -Width 300 -Height 400 -Screens $single | Should -BeTrue
+        }
+
+        It 'rejects a rectangle stranded off all monitors (disconnected left monitor)' {
+            Test-RectOnAnyScreen -Left -2428 -Top 323 -Width 300 -Height 400 -Screens $single | Should -BeFalse
+        }
+
+        It 'accepts a rectangle that lives on a secondary monitor in the list' {
+            $two = @(
+                @{ Left = 0.0;     Top = 0.0; Right = 3440.0; Bottom = 1392.0 },
+                @{ Left = -2560.0; Top = 0.0; Right = 0.0;    Bottom = 1440.0 }
+            )
+            Test-RectOnAnyScreen -Left -2428 -Top 323 -Width 300 -Height 400 -Screens $two | Should -BeTrue
+        }
+
+        It 'rejects when only a sliver overlaps (below the min-visible threshold)' {
+            # window sits so only 10px pokes onto the monitor
+            Test-RectOnAnyScreen -Left -290 -Top 50 -Width 300 -Height 400 -Screens $single | Should -BeFalse
+        }
+    }
+
+    Context 'Position-Window recovery' {
+        It 'snaps to a corner when the saved position is off every monitor' {
+            $script:Cfg = @{ Left = -2428.0; Top = 323.0 }
+            function Get-ScreenWorkAreas { @( @{ Left = 0.0; Top = 0.0; Right = 3440.0; Bottom = 1392.0 } ) }
+            function Get-DeviceScale { @{ X = 1.0; Y = 1.0 } }
+            function Get-WorkArea { @{ Left = 0.0; Top = 0.0; Right = 3440.0; Bottom = 1392.0 } }
+
+            Position-Window
+
+            # TR corner: Left = Right - width - 16 = 3440 - 300 - 16 = 3124; Top = 16
+            $script:window.Left | Should -Be 3124.0
+            $script:window.Top  | Should -Be 16.0
+        }
+
+        It 'honours a saved position that is still on a connected monitor' {
+            $script:Cfg = @{ Left = 200.0; Top = 120.0 }
+            function Get-ScreenWorkAreas { @( @{ Left = 0.0; Top = 0.0; Right = 3440.0; Bottom = 1392.0 } ) }
+            function Get-DeviceScale { @{ X = 1.0; Y = 1.0 } }
+            function Get-WorkArea { @{ Left = 0.0; Top = 0.0; Right = 3440.0; Bottom = 1392.0 } }
+
+            Position-Window
+
+            $script:window.Left | Should -Be 200.0
+            $script:window.Top  | Should -Be 120.0
+        }
+    }
+}
+
 Describe 'Legacy state positioning' {
     BeforeAll {
         $root = Split-Path $PSScriptRoot -Parent

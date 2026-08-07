@@ -47,7 +47,7 @@ This downloads the repo zip, installs the same script app under `%LOCALAPPDATA%\
 
 - Windows 10/11
 - Windows PowerShell 5.1 or PowerShell 7+
-- Claude Code CLI signed in (`claude auth login`). Windows and standard WSL installs are supported; WSL credentials and transcripts are discovered under `\\wsl.localhost\\<distro>\\home\\<user>\\.claude`.
+- Claude Code CLI signed in (`claude auth login`)
 - Codex installed if you want Codex stats; sessions are read from `~\.codex\sessions`
 - Cursor IDE signed in if you want Cursor usage and analytics
 
@@ -62,6 +62,7 @@ Each provider is optional. If one source is unavailable, the overlay keeps showi
 | Expand / collapse a section | Click its section header |
 | Refresh usage immediately | Right-click -> Refresh now |
 | Print one JSON snapshot | `pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json` |
+| Print only one provider | `pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json -Provider Codex` |
 | Copy current stats | Right-click -> Copy stats to clipboard |
 | Open Claude usage page | Right-click -> Open claude.ai/usage |
 | Change theme or opacity | Right-click -> Theme / Opacity |
@@ -73,6 +74,67 @@ Each provider is optional. If one source is unavailable, the overlay keeps showi
 | Quit | Right-click -> Quit |
 
 The overlay saves its position, opacity, theme, start-hidden setting, graph/alert preferences, and visible provider sections.
+
+### JSON Snapshot Schema
+
+`unified-overlay.ps1 -Json` prints one machine-readable snapshot and exits before any WPF HUD startup. The output contract is versioned with `schema: "ai-usage.snapshot.v1"` and all provider data lives under a normalized `providers` envelope:
+
+```json
+{
+  "schema": "ai-usage.snapshot.v1",
+  "generatedAt": "2026-07-09T12:34:56.0000000-05:00",
+  "appVersion": "0.2.2",
+  "request": {
+    "providers": ["claude", "codex", "cursor"],
+    "timeoutSec": {
+      "claude": 20,
+      "cursor": 20
+    }
+  },
+  "providers": {
+    "claude": {
+      "selected": true,
+      "status": "ok",
+      "message": "",
+      "lastFetch": "12:34",
+      "identity": null,
+      "usage": {},
+      "stats": {},
+      "error": null,
+      "statsError": null
+    },
+    "codex": {
+      "selected": true,
+      "status": "unavailable",
+      "stats": null,
+      "error": null
+    },
+    "cursor": {
+      "selected": true,
+      "status": "unavailable",
+      "message": "Cannot read Cursor token from state.vscdb",
+      "lastFetch": "",
+      "usage": null,
+      "summary": null,
+      "local": null,
+      "error": null
+    }
+  }
+}
+```
+
+Provider status is data, not the process result. Missing or unavailable providers are represented in JSON and do not make snapshot mode fail; providers excluded by a filter are still present with `selected: false` and `status: "skipped"`.
+
+Provider and timeout controls:
+
+```powershell
+pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json -Provider Claude,Codex
+pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json -ClaudeOnly
+pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json -CursorOnly -TimeoutSec 5
+pwsh -NoLogo -NoProfile -File .\unified-overlay.ps1 -Json -ClaudeTimeoutSec 3 -CursorTimeoutSec 8
+```
+
+`-Provider` accepts `Claude`, `Codex`, and `Cursor`. The `-ClaudeOnly`, `-CodexOnly`, and `-CursorOnly` switches are shortcuts; if any are supplied, they define the selected provider set. `-TimeoutSec` sets the default network timeout for Claude and Cursor. `-ClaudeTimeoutSec` and `-CursorTimeoutSec` override that default for their provider. Timeout values are clamped to 1-120 seconds.
 
 ## Uninstall
 
@@ -100,8 +162,8 @@ The fallback/manual install can still be removed by running `Uninstall.bat` from
 
 The overlay is a PowerShell/WPF app that reads existing local credentials and usage artifacts:
 
-- Claude live quota comes from Anthropic's OAuth usage endpoint using the Claude Code token stored under `~\.claude` (Windows or WSL).
-- Claude local stats are computed from JSONL transcripts under `~\.claude\projects` (Windows and WSL sources are combined).
+- Claude live quota comes from Anthropic's OAuth usage endpoint using the Claude Code token stored under `~\.claude`.
+- Claude local stats are computed from JSONL transcripts under `~\.claude\projects`.
 - Codex stats are computed from JSONL sessions under `~\.codex\sessions`.
 - Cursor usage is read from Cursor's local auth database and Cursor dashboard APIs.
 - Cursor SQLite reads use the bundled `sqlite3.exe`.

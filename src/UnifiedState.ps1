@@ -10,11 +10,14 @@ $script:UnifiedCfgDefaults = @{
     Opacity     = 1.0
     StartHidden = $false
     ShowStats   = $true
+    Compact     = $false
     Theme       = 'Deep Space'
     ShowAlerts  = $true
     ShowGraph   = $false
     AutoCheckUpdates = $true
+    LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
+    AlertState = @{}
 }
 
 function ConvertTo-UnifiedSectionsMap($value) {
@@ -67,7 +70,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastNotifiedUpdateVersion')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
@@ -76,7 +79,17 @@ function Load-UnifiedState {
         if ($sectionsProp) {
             $script:Cfg['Sections'] = ConvertTo-UnifiedSectionsMap $sectionsProp.Value
         }
+        $alertStateProp = $s.PSObject.Properties['AlertState']
+        if ($alertStateProp) {
+            $script:Cfg['AlertState'] = $alertStateProp.Value
+            if (Get-Command Import-AlertStateFromConfig -ErrorAction SilentlyContinue) {
+                Import-AlertStateFromConfig
+            }
+        }
         Initialize-UnifiedCfg
+        if ($script:UpdateState -and $script:Cfg.LastUpdateCheckAt) {
+            $script:UpdateState.CheckedAt = $script:Cfg.LastUpdateCheckAt
+        }
     } catch {
         try { Write-Log "Load-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
@@ -96,6 +109,16 @@ function Apply-UnifiedSettings {
         $sparkRow = $script:window.FindName('sparkRow')
         if ($sparkRow) {
             $sparkRow.Visibility = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        }
+
+        # Compact mode: swap each section's Full body for its single-line Compact body.
+        $compact = [bool]$script:Cfg.Compact
+        $vFull = if ($compact) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+        $vComp = if ($compact) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        foreach ($sec in $script:UnifiedSectionKeys) {
+            $full = $script:window.FindName($sec + 'Full');    if ($full) { $full.Visibility = $vFull }
+            $comp = $script:window.FindName($sec + 'Compact'); if ($comp) { $comp.Visibility = $vComp }
+            $hd   = $script:window.FindName($sec + 'HeaderDetail'); if ($hd) { $hd.Visibility = $vComp }
         }
     }
 
@@ -192,6 +215,66 @@ function Clamp-Position {
     $script:window.Top  = [math]::Max($wa.Top,  [math]::Min($script:window.Top,  $wa.Bottom - $h))
 }
 
+# Working areas (physical pixels) of every currently connected monitor.
+function Get-ScreenWorkAreas {
+    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+        $w = $_.WorkingArea
+        @{ Left = [double]$w.Left; Top = [double]$w.Top; Right = [double]$w.Right; Bottom = [double]$w.Bottom }
+    }
+}
+
+# Device (DPI) scale of the monitor the window is currently on. WPF Left/Top are
+# device-independent units; monitor rects are physical pixels, so the saved
+# position must be scaled before it can be compared against them.
+function Get-DeviceScale {
+    $src = [System.Windows.PresentationSource]::FromVisual($script:window)
+    if ($src) {
+        $t = $src.CompositionTarget.TransformToDevice
+        return @{ X = [double]$t.M11; Y = [double]$t.M22 }
+    }
+    return @{ X = 1.0; Y = 1.0 }
+}
+
+# True when the given rectangle overlaps any monitor work area by at least
+# $MinVisible pixels on both axes. All rects share one (pixel) coordinate space.
+# This is how we detect a window stranded on a now-disconnected monitor: its
+# saved rectangle intersects none of the monitors that are actually present.
+function Test-RectOnAnyScreen {
+    param(
+        [double]$Left,
+        [double]$Top,
+        [double]$Width,
+        [double]$Height,
+        [object[]]$Screens,
+        [double]$MinVisible = 48.0
+    )
+
+    $right  = $Left + $Width
+    $bottom = $Top  + $Height
+    foreach ($s in $Screens) {
+        $overlapX = [math]::Min($right,  [double]$s.Right)  - [math]::Max($Left, [double]$s.Left)
+        $overlapY = [math]::Min($bottom, [double]$s.Bottom) - [math]::Max($Top,  [double]$s.Top)
+        if ($overlapX -ge $MinVisible -and $overlapY -ge $MinVisible) { return $true }
+    }
+    return $false
+}
+
+# True when the saved config position lands enough of the window on a connected
+# monitor to be reachable. Guards against restoring onto a monitor that has since
+# been unplugged (the classic "overlay vanished" report).
+function Test-SavedPositionVisible {
+    if ($null -eq $script:Cfg.Left -or $null -eq $script:Cfg.Top) { return $false }
+    if (-not (Test-FiniteNumber $script:Cfg.Left) -or -not (Test-FiniteNumber $script:Cfg.Top)) { return $false }
+
+    $scale = Get-DeviceScale
+    $w = (Get-WindowDimension 'Width')  * $scale.X
+    $h = (Get-WindowDimension 'Height') * $scale.Y
+    $left = [double]$script:Cfg.Left * $scale.X
+    $top  = [double]$script:Cfg.Top  * $scale.Y
+
+    return Test-RectOnAnyScreen -Left $left -Top $top -Width $w -Height $h -Screens (Get-ScreenWorkAreas)
+}
+
 function Snap-ToCorner([string]$corner) {
     $wa = Get-WorkArea
     $w  = Get-WindowDimension 'Width'
@@ -209,7 +292,7 @@ function Position-Window {
     if ($script:Positioned) { return }
     $script:Positioned = $true
     Resize-ToContent
-    if ($null -ne $script:Cfg.Left) {
+    if (($null -ne $script:Cfg.Left) -and (Test-SavedPositionVisible)) {
         $script:window.Left = [double]$script:Cfg.Left
         $script:window.Top  = [double]$script:Cfg.Top
         Clamp-Position
@@ -288,6 +371,7 @@ function Copy-Stats {
     if ($s) {
         $lines += "Claude est. API value: ~$(Fmt-Money $s.ValueUSD) all-time"
         $lines += "Claude tokens: $(Fmt-Tok $s.InTokens) in / $(Fmt-Tok $s.OutTokens) out"
+        $lines += "Claude today after-hours: $(Fmt-Tok $s.TodayAfterHoursTok) tokens / $($s.TodayAfterHoursMsg) msgs"
         $lines += "Claude lifetime: $($s.Sessions) sessions / $(Fmt-Tok $s.Messages) msgs"
     }
 
@@ -295,6 +379,7 @@ function Copy-Stats {
         $cs = $script:CodexStats
         $lines += "Codex est. API value: ~$(Fmt-Money $cs.ValueUSD) all-time"
         $lines += "Codex tokens: $(Fmt-Tok $cs.InTokens) in / $(Fmt-Tok $cs.OutTokens) out"
+        $lines += "Codex today after-hours: $(Fmt-Tok $cs.TodayAfterHoursTok) tokens / $($cs.TodayAfterHoursMsg) msgs"
         $lines += "Codex lifetime: $($cs.Sessions) sessions / $(Fmt-Tok $cs.Messages) msgs"
     }
 

@@ -8,85 +8,6 @@ function Write-Log {
     } catch { }  # never throw from a logger
 }
 
-# The HUD runs on Windows, but Claude Code may be used exclusively inside WSL.
-# Windows remains the preferred source; standard WSL homes are a fallback.
-function Get-ClaudeDataRoots {
-    param(
-        [string]$WindowsHome = $env:USERPROFILE,
-        [string]$WslHostRoot = '\\wsl.localhost',
-        [string[]]$WslDistros
-    )
-
-    $roots = [System.Collections.Generic.List[string]]::new()
-    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $addRoot = {
-        param([string]$Path)
-        if ($Path -and $seen.Add($Path)) { $roots.Add($Path) }
-    }
-
-    if ($WindowsHome) { & $addRoot (Join-Path $WindowsHome '.claude') }
-
-    try {
-        # The WSL share itself does not enumerate distro names consistently.
-        # Registered distributions are exposed under the current user's Lxss key.
-        if (-not $WslDistros) {
-            $WslDistros = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction Stop |
-                ForEach-Object { (Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop).DistributionName } |
-                Where-Object { $_ })
-        }
-
-        foreach ($distro in $WslDistros) {
-            $homeRoot = Join-Path (Join-Path $WslHostRoot $distro) 'home'
-            if (-not (Test-Path -LiteralPath $homeRoot)) { continue }
-            foreach ($userHome in @(Get-ChildItem -LiteralPath $homeRoot -Directory -ErrorAction Stop)) {
-                $claudeHome = Join-Path $userHome.FullName '.claude'
-                if (Test-Path -LiteralPath $claudeHome) { & $addRoot $claudeHome }
-            }
-        }
-    } catch {
-        Write-Log "Get-ClaudeDataRoots: WSL discovery failed - $($_.Exception.Message)"
-    }
-
-    return $roots.ToArray()
-}
-
-function Get-ClaudeCredentialPreferencePath {
-    Join-Path $script:AppDir 'claude-credential-preference.json'
-}
-
-function Get-PreferredClaudeCredentialPath {
-    try {
-        $path = Get-ClaudeCredentialPreferencePath
-        if (-not (Test-Path -LiteralPath $path)) { return $null }
-        return [string]((Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json).CredentialPath)
-    } catch { return $null }
-}
-
-function Save-PreferredClaudeCredentialPath([string]$CredentialPath) {
-    if (-not $CredentialPath) { return }
-    try {
-        @{ CredentialPath = $CredentialPath } | ConvertTo-Json | Set-Content -LiteralPath (Get-ClaudeCredentialPreferencePath) -Encoding UTF8
-    } catch { Write-Log "Save-PreferredClaudeCredentialPath failed - $($_.Exception.Message)" }
-}
-
-function Resolve-ClaudeDataPaths {
-    $roots = @(Get-ClaudeDataRoots)
-    $script:ClaudeProjectDirs = @($roots | ForEach-Object { Join-Path $_ 'projects' } | Where-Object { Test-Path -LiteralPath $_ })
-
-    $credentialPaths = [System.Collections.Generic.List[string]]::new()
-    $addCredential = { param($Path) if ($Path -and (Test-Path -LiteralPath $Path) -and -not $credentialPaths.Contains($Path)) { $credentialPaths.Add($Path) } }
-    & $addCredential (Get-PreferredClaudeCredentialPath)
-    & $addCredential $script:CredPath
-
-    foreach ($root in $roots) {
-        $candidate = Join-Path $root '.credentials.json'
-        & $addCredential $candidate
-    }
-
-    $script:ClaudeCredentialPaths = $credentialPaths.ToArray()
-    if ($credentialPaths.Count -gt 0) { $script:CredPath = $credentialPaths[0] }
-}
-
 # ---------------------------------------------------------------------------
 # Claude quota window normalization
 #
@@ -425,6 +346,60 @@ function Get-ClaudeProfile {
     return ConvertTo-ClaudeIdentity $profile
 }
 
+function Select-ClaudeCredential {
+    param([string[]]$Paths)
+
+    $nowMs = [System.DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $bestValid = $null
+    $bestValidExpiresAt = 0L
+    $bestFallback = $null
+    $bestFallbackMtime = [datetime]::MinValue
+
+    foreach ($path in @($Paths | Select-Object -Unique)) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue)) { continue }
+
+        try {
+            $credentialFile = Get-Item -LiteralPath $path -ErrorAction Stop
+            $credentials = Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $oauth = $credentials.claudeAiOauth
+            $token = if ($oauth) { [string]$oauth.accessToken } else { $null }
+            if (-not $token) { continue }
+
+            if ($credentialFile.LastWriteTimeUtc -gt $bestFallbackMtime) {
+                $bestFallback = $token
+                $bestFallbackMtime = $credentialFile.LastWriteTimeUtc
+            }
+
+            $expiresAt = 0L
+            if ($oauth.expiresAt -and [long]::TryParse([string]$oauth.expiresAt, [ref]$expiresAt) -and
+                $expiresAt -gt $nowMs -and $expiresAt -gt $bestValidExpiresAt) {
+                $bestValid = $token
+                $bestValidExpiresAt = $expiresAt
+            }
+        } catch { }
+    }
+
+    if ($bestValid) { return $bestValid }
+    return $bestFallback
+}
+
+function Get-ClaudeProjectsDirCandidates {
+    param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:USERPROFILE) {
+        try { [void]$candidates.Add((Join-Path $env:USERPROFILE '.claude\projects')) } catch { }
+    }
+
+    foreach ($root in @($WslHomeRoots)) {
+        if ($root) {
+            try { [void]$candidates.Add((Join-Path $root '.claude\projects')) } catch { }
+        }
+    }
+
+    return @($candidates | Select-Object -Unique)
+}
+
 function Get-Usage {
     param(
         [int]$TimeoutSec = 20,
@@ -443,39 +418,34 @@ function Get-Usage {
         }
     }
 
-    Resolve-ClaudeDataPaths
-    $tok = $null
-    $credentialPaths = @($script:ClaudeCredentialPaths)
-    if ($credentialPaths.Count -eq 0 -and $script:CredPath) { $credentialPaths = @($script:CredPath) }
-    if ($credentialPaths.Count -eq 0) {
-        $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
+    $credentialPaths = [System.Collections.Generic.List[string]]::new()
+    if ($script:CredPath) { [void]$credentialPaths.Add($script:CredPath) }
+    foreach ($root in Get-WslHomeRoots) {
+        if ($root) {
+            try { [void]$credentialPaths.Add((Join-Path $root '.claude\.credentials.json')) } catch { }
+        }
     }
 
-    $resp = $null
-    $lastAuthException = $null
-    try {
-        foreach ($credentialPath in $credentialPaths) {
-            try { $candidateToken = (Get-Content $credentialPath -Raw | ConvertFrom-Json).claudeAiOauth.accessToken } catch { continue }
-            if (-not $candidateToken) { continue }
-
+    $candidatePaths = @($credentialPaths | Select-Object -Unique)
+    $tok = Select-ClaudeCredential $candidatePaths
+    if (-not $tok) {
+        $hasCredentialsFile = $false
+        foreach ($path in $candidatePaths) {
             try {
-                $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
-                    Authorization = "Bearer $candidateToken"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+                if (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue) {
+                    $hasCredentialsFile = $true
+                    break
                 }
-                $tok = $candidateToken
-                $script:CredPath = $credentialPath
-                Save-PreferredClaudeCredentialPath $credentialPath
-                break
-            } catch {
-                $code = $null
-                if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
-                if ($code -eq 401) { $lastAuthException = $_.Exception; continue }
-                throw
-            }
+            } catch { }
         }
-        if (-not $resp) {
-            if ($lastAuthException) { throw $lastAuthException }
-            $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
+        if (-not $hasCredentialsFile) {
+            $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
+        }
+        $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
+    }
+    try {
+        $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
+            Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
         }
         $resp = Normalize-ClaudeQuotaWindows $resp
         $script:State.Data = $resp; $script:State.Status = 'ok'
@@ -544,6 +514,7 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
     $val = 0.0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
     $tMsg = 0; $tTok = 0L
+    $afterHoursMsg = 0; $afterHoursTok = 0L
 
     foreach ($r in $records) {
         $v = @{
@@ -560,6 +531,10 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
         if ($r.Date.Date -eq $today.Date) {
             $tMsg++
             $tTok += [long]$r.In + [long]$r.Out
+            if (Test-UsageAfterHours $r.Date) {
+                $afterHoursMsg++
+                $afterHoursTok += [long]$r.In + [long]$r.Out
+            }
         }
     }
 
@@ -571,8 +546,22 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
         Messages     = $records.Count
         TodayMsg     = $tMsg
         TodayTok     = $tTok
+        TodayAfterHoursMsg = $afterHoursMsg
+        TodayAfterHoursTok = $afterHoursTok
         LastComputed = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
+}
+
+function Test-UsageAfterHours([datetime]$Date) {
+    $startHour = if ($null -ne $script:WorkdayStartHour) { [int]$script:WorkdayStartHour } else { 8 }
+    $endHour = if ($null -ne $script:WorkdayEndHour) { [int]$script:WorkdayEndHour } else { 18 }
+
+    if ($Date.DayOfWeek -eq [System.DayOfWeek]::Saturday -or
+        $Date.DayOfWeek -eq [System.DayOfWeek]::Sunday) {
+        return $true
+    }
+
+    return ($Date.Hour -lt $startHour -or $Date.Hour -ge $endHour)
 }
 
 # Per-file parse cache: path -> @{ Stamp; Records }
@@ -663,18 +652,29 @@ function Get-Stats {
     $cachePath = Join-Path $script:AppDir 'stats-cache.json'
     Import-StatsFileCache $cachePath
 
-    Resolve-ClaudeDataPaths
-    $projDirs = @($script:ClaudeProjectDirs)
-    if ($projDirs.Count -eq 0) {
-        Write-Log 'Get-Stats: no Windows or WSL ~/.claude/projects directory found'
+    $projectDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($dir in Get-ClaudeProjectsDirCandidates) {
+        try {
+            if (Test-Path -LiteralPath $dir -PathType Container -ErrorAction SilentlyContinue) {
+                [void]$projectDirs.Add($dir)
+            }
+        } catch { }
+    }
+
+    if ($projectDirs.Count -eq 0) {
+        Write-Log 'Get-Stats: ~/.claude/projects not found - no transcript data'
         return
     }
 
-    try {
-        $files = @($projDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter '*.jsonl' -File -ErrorAction Stop })
-    } catch {
-        Write-Log "Get-Stats: failed to enumerate transcripts - $($_.Exception.Message)"
-        return
+    $files = [System.Collections.Generic.List[object]]::new()
+    foreach ($dir in $projectDirs) {
+        try {
+            foreach ($file in @(Get-ChildItem -LiteralPath $dir -Recurse -Filter '*.jsonl' -File -ErrorAction Stop)) {
+                [void]$files.Add($file)
+            }
+        } catch {
+            Write-Log "Get-Stats: failed to enumerate transcripts in $dir - $($_.Exception.Message)"
+        }
     }
 
     # Deduplicate across all files using msgId:requestId key
