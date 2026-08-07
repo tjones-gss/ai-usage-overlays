@@ -111,6 +111,16 @@ function Format-QuakeNum([double]$n) {
     return ('{0:0}' -f $n)
 }
 
+function ConvertTo-QuakeExtraUsage($extra) {
+    if (-not $extra -or -not $extra.is_enabled -or -not $extra.monthly_limit) { return $null }
+
+    return [pscustomobject]@{
+        Used   = [double]$extra.used_credits / 100.0
+        Limit  = [double]$extra.monthly_limit / 100.0
+        Symbol = if ($extra.currency -eq 'USD') { '$' } else { "$($extra.currency) " }
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Columns
 # ---------------------------------------------------------------------------
@@ -143,11 +153,10 @@ function Render-QuakeClaude($tb) {
         Add-QuakeStatLine $tb 'lifetime' ('{0} sessions  {1} msgs' -f [int]$s.Sessions, (Format-QuakeNum ([double]$s.Messages)))
         Add-QuakeStatLine $tb 'est cost' ('~${0:N0} all-time' -f [double]$s.ValueUSD)
     }
-    if ($d -and $d.extra_usage) {
-        $used  = [double]$d.extra_usage.used_usd
-        $limit = [double]$d.extra_usage.limit_usd
-        $hex = if ($limit -gt 0 -and ($used / $limit) -ge 0.85) { $script:QuakeCol.Crit } else { $script:QuakeCol.Value }
-        Add-QuakeStatLine $tb 'overage' ('${0:N2} / ${1:N0}' -f $used, $limit) 9 $hex
+    $extra = if ($d) { ConvertTo-QuakeExtraUsage $d.extra_usage } else { $null }
+    if ($extra) {
+        $hex = if ($extra.Limit -gt 0 -and ($extra.Used / $extra.Limit) -ge 0.85) { $script:QuakeCol.Crit } else { $script:QuakeCol.Value }
+        Add-QuakeStatLine $tb 'overage' ('{0}{1:N2} / {0}{2:N0}' -f $extra.Symbol, $extra.Used, $extra.Limit) 9 $hex
     }
 }
 

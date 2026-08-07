@@ -360,6 +360,8 @@ function Apply-DropdownChrome {
 function Set-DropdownMonitor([string]$DeviceName) {
     $script:Cfg['DropdownMonitor'] = $DeviceName
     if (Test-DropdownMode -and $script:DropdownShown) {
+        Resize-QuakeToContent
+        $script:window.UpdateLayout()
         $geo = Get-DropdownGeometry
         $script:window.BeginAnimation([System.Windows.Window]::TopProperty, $null)
         $script:window.Left = $geo.Left
