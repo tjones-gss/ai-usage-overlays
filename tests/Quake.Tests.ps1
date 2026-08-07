@@ -89,3 +89,19 @@ Describe 'Quake pinned geometry persistence' {
         $script:PinnedTop  | Should -Be 222.0
     }
 }
+Describe 'Dropdown assembly references' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        . (Join-Path $root 'src\Dropdown.ps1')
+    }
+
+    It 'returns existing absolute assembly paths for PowerShell 7 compilation' {
+        $references = @(Get-DropdownReferencedAssemblies)
+
+        $references.Count | Should -BeGreaterThan 0
+        foreach ($reference in $references) {
+            [System.IO.Path]::IsPathRooted([string]$reference) | Should -BeTrue
+            Test-Path -LiteralPath $reference -PathType Leaf | Should -BeTrue
+        }
+    }
+}
