@@ -3,6 +3,7 @@
 $script:UnifiedSectionKeys = @('claude', 'codex', 'cursor')
 
 if (-not $script:Cfg) { $script:Cfg = @{} }
+$script:UnifiedStateNeedsRepair = $false
 
 $script:UnifiedCfgDefaults = @{
     Left        = $null
@@ -40,6 +41,28 @@ function ConvertTo-UnifiedSectionsMap($value) {
     return $sections
 }
 
+function ConvertTo-UnifiedDateTime($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [datetime]) { return $value }
+
+    $raw = $value
+    if ($value -isnot [string]) {
+        $prop = $value.PSObject.Properties['value']
+        if (-not $prop) { $prop = $value.PSObject.Properties['Value'] }
+        if (-not $prop) { return $null }
+        $raw = $prop.Value
+    }
+
+    try {
+        return [datetime]::Parse(
+            [string]$raw,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind)
+    } catch {
+        return $null
+    }
+}
+
 function Initialize-UnifiedCfg {
     foreach ($key in $script:UnifiedCfgDefaults.Keys) {
         if (-not $script:Cfg.ContainsKey($key)) {
@@ -68,12 +91,14 @@ function Save-UnifiedState {
             $out[$key] = $val
         }
         $out | ConvertTo-Json -Depth 6 | Set-Content -Path $script:StatePath -Encoding UTF8
+        $script:UnifiedStateNeedsRepair = $false
     } catch {
         try { Write-Log "Save-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
 }
 
 function Load-UnifiedState {
+    $script:UnifiedStateNeedsRepair = $false
     try {
         Initialize-UnifiedCfg
         if (-not (Test-Path $script:StatePath)) { return }
@@ -95,13 +120,22 @@ function Load-UnifiedState {
                 Import-AlertStateFromConfig
             }
         }
-        if ($script:Cfg['LastUpdateCheckAt'] -is [string]) {
+
+        $timestamp = $script:Cfg['LastUpdateCheckAt']
+        if ($timestamp -is [string]) {
             try {
                 $script:Cfg['LastUpdateCheckAt'] = [datetime]::Parse(
-                    $script:Cfg['LastUpdateCheckAt'],
+                    $timestamp,
                     [System.Globalization.CultureInfo]::InvariantCulture,
                     [System.Globalization.DateTimeStyles]::RoundtripKind)
-            } catch { $script:Cfg['LastUpdateCheckAt'] = $null }
+            } catch {
+                $script:Cfg['LastUpdateCheckAt'] = $null
+                $script:UnifiedStateNeedsRepair = $true
+            }
+        } elseif ($null -ne $timestamp -and $timestamp -isnot [datetime]) {
+            $parsedTimestamp = ConvertTo-UnifiedDateTime $timestamp
+            $script:Cfg['LastUpdateCheckAt'] = $parsedTimestamp
+            $script:UnifiedStateNeedsRepair = $true
         }
 
         Initialize-UnifiedCfg
@@ -109,6 +143,7 @@ function Load-UnifiedState {
             $script:UpdateState.CheckedAt = $script:Cfg.LastUpdateCheckAt
         }
     } catch {
+        $script:UnifiedStateNeedsRepair = $true
         try { Write-Log "Load-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
 }
