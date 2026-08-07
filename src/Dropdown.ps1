@@ -307,6 +307,13 @@ function Test-DropdownMode {
     return ($m -eq 'Quake' -or $m -eq 'Dropdown')
 }
 
+function Initialize-DropdownPinnedPosition {
+    if ($null -ne $script:Cfg['Left'] -and $null -ne $script:Cfg['Top']) {
+        $script:PinnedLeft = [double]$script:Cfg['Left']
+        $script:PinnedTop  = [double]$script:Cfg['Top']
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Mode switching
 # ---------------------------------------------------------------------------

@@ -56,3 +56,36 @@ Describe 'Quake monitor selection' {
         $script:DropdownAnimating | Should -BeFalse
     }
 }
+
+Describe 'Quake pinned geometry persistence' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        function Write-Log { param([string]$Message) }
+        . (Join-Path $root 'src\UnifiedState.ps1')
+    }
+
+    BeforeEach {
+        $script:Cfg = @{ Left = 111.0; Top = 222.0; ViewMode = 'Quake' }
+        $script:StatePath = Join-Path $TestDrive 'unified-overlay-state.json'
+        $script:window = [pscustomobject]@{ Left = 5.0; Top = 6.0 }
+        Initialize-UnifiedCfg
+    }
+
+    It 'keeps pinned coordinates when saving while Quake is active' {
+        Save-UnifiedState
+
+        $saved = Get-Content $script:StatePath -Raw | ConvertFrom-Json
+        $saved.Left | Should -Be 111.0
+        $saved.Top  | Should -Be 222.0
+    }
+
+    It 'initializes the in-memory pinned position from persisted state' {
+        $script:PinnedLeft = $null
+        $script:PinnedTop = $null
+
+        Initialize-DropdownPinnedPosition
+
+        $script:PinnedLeft | Should -Be 111.0
+        $script:PinnedTop  | Should -Be 222.0
+    }
+}

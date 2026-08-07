@@ -59,7 +59,11 @@ Initialize-UnifiedCfg
 function Save-UnifiedState {
     try {
         Initialize-UnifiedCfg
-        if ($script:window) {
+        $dropdownActive = $false
+        if (Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) {
+            $dropdownActive = Test-DropdownMode
+        }
+        if ($script:window -and -not $dropdownActive) {
             $script:Cfg.Left = $script:window.Left
             $script:Cfg.Top  = $script:window.Top
         }

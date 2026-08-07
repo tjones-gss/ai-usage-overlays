@@ -669,6 +669,7 @@ function Complete-RefreshJobs {
 # data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
+if (Test-DropdownMode) { Initialize-DropdownPinnedPosition }
 Sync-ViewModeMenuItems   # menu was built from defaults before state was read
 $script:State.Status  = 'init'
 $script:State.Message = 'loading...'
