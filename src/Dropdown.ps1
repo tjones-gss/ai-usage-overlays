@@ -258,6 +258,7 @@ function Show-Dropdown {
     $geo = Get-DropdownGeometry
 
     $script:window.BeginAnimation([System.Windows.Window]::TopProperty, $null)
+    $script:DropdownAnimating = $false
     $script:window.Left = $geo.Left
     $script:window.Top  = $geo.HiddenTop
     $script:window.Show()
@@ -330,6 +331,7 @@ function Exit-DropdownMode {
     Apply-DropdownChrome
     Resize-ToContent          # back to content-sized, not monitor-wide
     $script:window.BeginAnimation([System.Windows.Window]::TopProperty, $null)
+    $script:DropdownAnimating = $false
     if ($null -ne $script:PinnedLeft) {
         $script:Cfg['Left'] = $script:PinnedLeft
         $script:Cfg['Top']  = $script:PinnedTop
@@ -364,6 +366,7 @@ function Set-DropdownMonitor([string]$DeviceName) {
         $script:window.UpdateLayout()
         $geo = Get-DropdownGeometry
         $script:window.BeginAnimation([System.Windows.Window]::TopProperty, $null)
+        $script:DropdownAnimating = $false
         $script:window.Left = $geo.Left
         $script:window.Top  = $geo.ShownTop
     }

@@ -39,6 +39,7 @@ Describe 'Quake monitor selection' {
     BeforeEach {
         $script:Cfg = @{ ViewMode = 'Quake'; DropdownMonitor = 'Primary' }
         $script:DropdownShown = $true
+        $script:DropdownAnimating = $true
         $script:window = [pscustomobject]@{ Left = 0.0; Top = 0.0 }
         $script:window | Add-Member ScriptMethod BeginAnimation { param($Property, $Animation) }
         $script:window | Add-Member ScriptMethod UpdateLayout { }
@@ -52,5 +53,6 @@ Describe 'Quake monitor selection' {
 
         Should -Invoke Resize-QuakeToContent -Times 1 -Exactly
         $script:window.Left | Should -Be 1920.0
+        $script:DropdownAnimating | Should -BeFalse
     }
 }
